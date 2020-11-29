@@ -266,36 +266,93 @@ func openShift(c *gin.Context) {
 
 }
 
+func getServSetting(c *gin.Context) {
+	hdata := make(map[string]interface{})
+	var kkms = make([]string, 0, 8)
+	//заполним Kkmserv из базы
+	err := KkmServ.ReadServ()
+	if err != nil {
+		c.JSON(http.StatusNotAcceptable, gin.H{"error": true, "message": err.Error()})
+		return
+	}
+	//прочитаем настройки сервера
+	for k, v := range KkmServ.Drv {
+		kkms = append(kkms, k)
+		hdata[k] = v.GetStruct()
+	}
+	hdata["deviceids"] = kkms
+	c.JSON(http.StatusOK, hdata)
+}
+
+//setServSetting установка параметров сервера
+func setServSetting(c *gin.Context) {
+	hdata := make(map[string]interface{})
+	//заполним Kkmserv из базы
+	var jkkm drv.KkmDrvSer
+	if err := c.ShouldBindJSON(&jkkm); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": http.StatusBadRequest, "error": true, "message": "bad request " + err.Error()})
+		return
+	}
+
+	err := KkmServ.SetServ(&jkkm)
+	if err != nil {
+		c.JSON(http.StatusNotAcceptable, gin.H{"error": true, "message": err.Error()})
+		return
+	}
+	hdata["device"] = jkkm
+
+	c.JSON(http.StatusOK, hdata)
+}
+
+//indexPage начальная страница приложения
+func indexPage(c *gin.Context) {
+	hdata := make(map[string]interface{})
+	//заполним Kkmserv из базы
+
+	hdata["page"] = "index"
+
+	c.HTML(
+		// Зададим HTTP статус 200 (OK)
+		http.StatusOK,
+		// Используем шаблон index.html
+		"index.html",
+		// Передадим данные в шаблон
+		hdata,
+	)
+}
+
+//initDB в пустой базе создает и записывает значения по умолчанию
 func initDB() error {
 	return DB.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte("DefaultConfig"))
 		if err != nil {
 			return err
 		}
-		var kkm = drv.KkmDrv{}
-		copy(kkm.AdminPassword[:], ADMINPASSWORD)
-		copy(kkm.Password[:], DEFAULTPASSWORD)
-		kkm.MaxAttemp = MAXATTEMPT
-		kkm.TimeOut = PORTTIMEOUT
-		kkm.Opt.Baud = int(DEFAULTBOD)
-		kkm.Opt.Name = DEFAULTPORT
-		kkm.Opt.ReadTimeout = time.Duration(BYTETIMEOUT) * time.Millisecond
-
+		//var kkm = drv.KkmDrv{}
+		/*
+			copy(kkm.AdminPassword[:], ADMINPASSWORD)
+			copy(kkm.Password[:], DEFAULTPASSWORD)
+			kkm.MaxAttemp = MAXATTEMPT
+			kkm.TimeOut = PORTTIMEOUT
+			kkm.Opt.Baud = int(DEFAULTBOD)
+			kkm.Opt.Name = DEFAULTPORT
+			kkm.Opt.ReadTimeout = time.Duration(BYTETIMEOUT) * time.Millisecond
+		*/
 		err = b.Put([]byte("AdminPassword"), ADMINPASSWORD)
 		err = b.Put([]byte("DefaultPassword"), DEFAULTPASSWORD)
 		err = b.Put([]byte("DefaultPort"), []byte(DEFAULTPORT))
 		err = b.Put([]byte("DefaultBod"), itob(int(DEFAULTBOD)))
 		err = b.Put([]byte("MaxAttempt"), itob(int(MAXATTEMPT)))
+
 		b, err = tx.CreateBucket([]byte("Drivers"))
 		uuidWithHyphen := uuid.New()
-		kkm.DeviceID = uuidWithHyphen.String()
-		kkm.Connected = false
+		kkm := KkmServ.New(uuidWithHyphen.String())
 		v, err := kkm.Serialize()
 		if err != nil {
 			return err
 		}
 		//uuid := strings.Replace(uuidWithHyphen.String(), "-", "", -1)
-		err = b.Put(uuidWithHyphen[:], v)
+		err = b.Put([]byte(kkm.DeviceID), v)
 		return nil
 	})
 }
@@ -304,8 +361,11 @@ func main() {
 	// открываем базу и считываем конфиг
 	// Open the my.db data file in your current directory.
 	// It will be created if it doesn't exist
-	port := flag.String("port", "3000", "Номер порта")
+	//port := flag.String("port", "3000", "Номер порта")
+	port := flag.Int("port", 3000, "Номер порта")
+	portstr := ":" + strconv.Itoa(*port)
 	flag.Parse()
+	//portstr := ":" + strconv.Itoa(*port)
 	var err error
 	DB, err = bolt.Open("kkm.db", 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
@@ -315,29 +375,25 @@ func main() {
 	defer DB.Close()
 
 	err = initDB()
-	if err != bolt.ErrBucketExists {
+	if err != nil && err != bolt.ErrBucketExists {
 		log.Fatal(err)
 	}
 
-	var kkm *drv.KkmDrv
-	//читаем параметры сервера
-	err = DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("Drivers"))
-		b.ForEach(func(key, v []byte) error {
-			kkm, err = drv.UnSerialize(v)
-			if err != nil {
-				return err
-			}
-			KkmServ.Add(string(key), kkm)
-			return nil
-		})
-		return nil
-	})
+	//init KkmServ
+	err = KkmServ.ReadServ()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	router := gin.Default()
 	router.Static("/assets", "./assets")
+	router.LoadHTMLGlob("./tpl/*")
+	//начальная страница настройки
+	router.GET("/", indexPage)
 	api := router.Group("/api/")
 	{
+		api.GET("GetServSetting/", getServSetting)
+		api.PUT("SetServSetting/", setServSetting)
 		api.POST("run/:command", runCommand)
 		api.POST("GetDataKKT/:DeviceID", getDataKKT)
 		//api.POST("OperationFN/", OperationFN)
@@ -357,5 +413,5 @@ func main() {
 		//api.DELETE("stores/", deleteStocks)
 		//api.DELETE("goods/:id", DeleteProduct)
 	}
-	router.Run(*port)
+	router.Run(portstr)
 }

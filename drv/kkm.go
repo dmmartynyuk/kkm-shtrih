@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/tarm/serial"
@@ -51,8 +52,8 @@ type KkmParam struct {
 	Fname     string `json:"fname"`
 }
 
-//portConf копия конфигурации порта для сериализации
-type portConf struct {
+//PortConf копия конфигурации порта для сериализации
+type PortConf struct {
 	Name        string        `json:"name"`
 	Baud        int           `json:"baud"`
 	ReadTimeout time.Duration `json:"readtimeout"` // Total timeout
@@ -64,10 +65,10 @@ type portConf struct {
 	StopBits byte `json:"stopbits"`
 }
 
-//kkmDrv копия конфигурации ккм для сериализации
-type kkmDrvSer struct {
+//KkmDrvSer копия конфигурации ккм для сериализации
+type KkmDrvSer struct {
 	DeviceID      string   `json:"deviceid"`
-	Opt           portConf `json:"portconf"`
+	Opt           PortConf `json:"portconf"`
 	TimeOut       int64    `json:"timeout"`
 	Password      int64    `json:"password"`
 	AdminPassword int64    `json:"adminpassword"`
@@ -103,7 +104,12 @@ func digit2str(d uint32) []byte {
 
 //Serialize преобразует данные в json byte
 func (kkm *KkmDrv) Serialize() ([]byte, error) {
-	var pconf = portConf{}
+	return json.Marshal(kkm.GetStruct())
+}
+
+//GetStruct преобразует данные в json byte
+func (kkm *KkmDrv) GetStruct() KkmDrvSer {
+	var pconf = PortConf{}
 	pconf.Name = kkm.Opt.Name
 	pconf.Baud = kkm.Opt.Baud
 	pconf.Parity = byte(kkm.Opt.Parity)
@@ -114,16 +120,67 @@ func (kkm *KkmDrv) Serialize() ([]byte, error) {
 	param.Fname = kkm.Param.Fname
 	param.Inn = kkm.Param.Inn
 	param.KKMNumber = kkm.Param.KKMNumber
-	var sr = kkmDrvSer{}
-	sr.AdminPassword = int64(binary.LittleEndian.Uint64(kkm.AdminPassword[:]))
+	var sr = KkmDrvSer{}
+	res := binary.LittleEndian.Uint32(kkm.AdminPassword[:])
+	sr.AdminPassword = int64(res)
 	sr.CodePage = kkm.CodePage
 	sr.DeviceID = kkm.DeviceID
 	sr.MaxAttemp = kkm.MaxAttemp
-	sr.Password = int64(binary.LittleEndian.Uint64(kkm.Password[:]))
+	sr.Password = int64(binary.LittleEndian.Uint32(kkm.Password[:]))
 	sr.Opt = pconf
 	sr.TimeOut = kkm.TimeOut
 	sr.Param = param
-	return json.Marshal(sr)
+	return sr
+}
+
+//SetDataFromStruct заполняет данные из структуры, которая десериализуется из json byte
+func (kkm *KkmDrv) SetDataFromStruct(jkkm *KkmDrvSer) {
+
+	kkm.Opt.Name = jkkm.Opt.Name
+	kkm.Opt.Baud = jkkm.Opt.Baud
+	kkm.Opt.Parity = serial.Parity(jkkm.Opt.Parity)
+	kkm.Opt.StopBits = serial.StopBits(jkkm.Opt.StopBits)
+	kkm.Opt.Size = jkkm.Opt.Size
+	kkm.Opt.ReadTimeout = time.Duration(jkkm.Opt.ReadTimeout) * time.Millisecond
+
+	kkm.CodePage = jkkm.CodePage
+	kkm.TimeOut = jkkm.TimeOut
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, uint32(jkkm.AdminPassword))
+	copy(kkm.AdminPassword[:], b[0:4])
+	binary.LittleEndian.PutUint32(b, uint32(jkkm.Password))
+	copy(kkm.Password[:], b[0:4])
+	kkm.MaxAttemp = jkkm.MaxAttemp
+
+	kkm.Param.Fname = jkkm.Param.Fname
+	kkm.Param.Inn = jkkm.Param.Inn
+	kkm.Param.KKMNumber = jkkm.Param.KKMNumber
+
+}
+
+func toInt(iface interface{}) int {
+	var i int
+	switch iface.(type) {
+	case float64:
+		i = int(iface.(float64))
+	case float32:
+		i = int(iface.(float32))
+	case int64:
+		i = int(iface.(int64))
+	case int32:
+		i = int(iface.(int32))
+	case int:
+		i = (iface.(int))
+	case string:
+		i, _ = strconv.Atoi(iface.(string))
+	case uint8:
+		i = int(iface.(uint8))
+	case uint32:
+		i = int(iface.(uint32))
+	case uint64:
+		i = int(iface.(uint64))
+	}
+	return i
 }
 
 //UnSerialize из json byte возвращает структуру kkmDrv
@@ -136,21 +193,21 @@ func UnSerialize(jdata []byte) (*KkmDrv, error) {
 	pcf, ok := dat["portconf"].(map[string]interface{}) //pcf map
 	if ok {
 		kkm.Opt.Name = pcf["name"].(string)
-		kkm.Opt.Baud = pcf["baud"].(int)
-		kkm.Opt.Parity = serial.Parity(pcf["parity"].(byte))
-		kkm.Opt.StopBits = serial.StopBits(pcf["stopbits"].(byte))
-		kkm.Opt.Size = pcf["size"].(byte)
-		kkm.Opt.ReadTimeout = pcf["readtimeout"].(time.Duration) * time.Millisecond
+		kkm.Opt.Baud = toInt(pcf["baud"])
+		kkm.Opt.Parity = serial.Parity(uint8(toInt(pcf["parity"])))
+		kkm.Opt.StopBits = serial.StopBits(uint8(toInt(pcf["stopbits"])))
+		kkm.Opt.Size = uint8(toInt(pcf["size"]))
+		kkm.Opt.ReadTimeout = time.Duration(toInt(pcf["readtimeout"])) * time.Millisecond
 	}
 	kkm.Busy = false
 	kkm.CodePage = dat["codepage"].(string)
 	kkm.DeviceID = dat["deviceid"].(string)
 	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, dat["adminpassword"].(uint32))
+	binary.LittleEndian.PutUint32(b, uint32(toInt(dat["adminpassword"])))
 	copy(kkm.AdminPassword[:], b[0:4])
-	binary.LittleEndian.PutUint32(b, dat["password"].(uint32))
+	binary.LittleEndian.PutUint32(b, uint32(toInt(dat["password"])))
 	copy(kkm.Password[:], b[0:4])
-	kkm.MaxAttemp = dat["maxattempt"].(int64)
+	kkm.MaxAttemp = int64(toInt(dat["maxattempt"]))
 	kkm.Connected = false
 	pcf, ok = dat["kkmparam"].(map[string]interface{})
 	if ok {
@@ -514,7 +571,7 @@ func (kkm *KkmDrv) SendCommand(cmdint uint16, params []byte) (errcode byte, data
 		}
 	}
 	b := make([]byte, 8)
-	binary.BigEndian.PutUint16(b, cmdint)
+	binary.LittleEndian.PutUint16(b, cmdint)
 
 	cmdlen := 1
 	if cmdint > 255 { //команда 0xFF__

@@ -5,6 +5,8 @@ import (
 	"kkm-shtrih/drv"
 	"sync"
 	"time"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 //Serv конфигурация сервера
@@ -35,6 +37,10 @@ func (k *Serv) GetConf(key string) (string, bool) {
 func (k *Serv) New(key string) *drv.KkmDrv {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	if len(k.Drv) == 0 {
+		k.Drv = make(map[string]*drv.KkmDrv)
+		k.Config = make(map[string]string)
+	}
 	d := drv.KkmDrv{}
 	d.DeviceID = key
 	d.Connected = false
@@ -53,6 +59,10 @@ func (k *Serv) New(key string) *drv.KkmDrv {
 func (k *Serv) Add(key string, kkm *drv.KkmDrv) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	if len(k.Drv) == 0 {
+		k.Drv = make(map[string]*drv.KkmDrv)
+		k.Config = make(map[string]string)
+	}
 	k.Drv[key] = kkm
 	return
 }
@@ -100,4 +110,71 @@ func (k *Serv) SetStatusDrv(key string, status bool) error {
 	}
 	val.Busy = status
 	return nil
+}
+
+//ReadServ читает настройки сервера из базы
+func (k *Serv) ReadServ() error {
+	k.Drv = make(map[string]*drv.KkmDrv)
+	k.Config = make(map[string]string)
+	//читаем параметры сервера
+	err := DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Drivers"))
+		b.ForEach(func(key, v []byte) error {
+			kkm, err := drv.UnSerialize(v)
+			if err != nil {
+				return err
+			}
+			k.Add(string(key), kkm)
+			return nil
+		})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	err = DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("DefaultConfig"))
+		b.ForEach(func(key, v []byte) error {
+			k.Config[string(key)] = string(v)
+			return nil
+		})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+//SetServ устанавливает настройки сервера и пишет в базу
+func (k *Serv) SetServ(jkkm *drv.KkmDrvSer) error {
+	d, err := k.GetDrv(jkkm.DeviceID)
+	if err != nil {
+		//нет такого девайса, создадим новый?
+		d = k.New(jkkm.DeviceID)
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	d.SetDataFromStruct(jkkm)
+
+	//сохраним в базу
+	return DB.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("Drivers"))
+		if err != nil {
+			return err
+		}
+		v, err := d.Serialize()
+		if err != nil {
+			return err
+		}
+		err = b.Put([]byte(d.DeviceID), v)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
 }
