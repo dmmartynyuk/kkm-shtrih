@@ -43,6 +43,7 @@ func (k *Serv) New(key string) *drv.KkmDrv {
 	}
 	d := drv.KkmDrv{}
 	d.DeviceID = key
+	d.Name = "новая kkm"
 	d.Connected = false
 	copy(d.AdminPassword[:], ADMINPASSWORD)
 	copy(d.Password[:], DEFAULTPASSWORD)
@@ -68,7 +69,7 @@ func (k *Serv) Add(key string, kkm *drv.KkmDrv) {
 }
 
 /*
-func (k *Serv) SetDrv(key string, val drv.KkmDrv) {
+func (k *Serv) SetDrv(kkm *drv.KkmDrv) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	k.Config[key]=val
@@ -110,6 +111,28 @@ func (k *Serv) SetStatusDrv(key string, status bool) error {
 	}
 	val.Busy = status
 	return nil
+}
+
+//ReadDrvServ читает настройки драйвера из базы
+func (k *Serv) ReadDrvServ(deviceid string) error {
+	k.Drv = make(map[string]*drv.KkmDrv)
+	//читаем параметры сервера
+	err := DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("Drivers"))
+		v := b.Get([]byte(deviceid))
+		if v != nil {
+			kkm, err := drv.UnSerialize(v)
+			if err != nil {
+				return err
+			}
+			k.Add(string(deviceid), kkm)
+			return nil
+		}
+		return nil
+	})
+
+	return err
+
 }
 
 //ReadServ читает настройки сервера из базы

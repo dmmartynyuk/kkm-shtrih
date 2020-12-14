@@ -1,27 +1,24 @@
 function data() {
-	/*
-  function getThemeFromLocalStorage() {
-    // if user already changed the theme, use it
-    if (window.localStorage.getItem('dark')) {
-      return JSON.parse(window.localStorage.getItem('dark'))
+	function getcurKKMFromLocalStorage() {
+    if (window.localStorage.getItem('currentkkm')) {
+      return (window.localStorage.getItem('currentkkm'))
     }
-    // else return their preferences
-    return (
-      !!window.matchMedia &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches
-    )
+     return ""
   }
-  function setThemeToLocalStorage(value) {
-    window.localStorage.setItem('dark', value)
-  }*/
+  function setcurKKMToLocalStorage(value) {
+    window.localStorage.setItem('currentkkm', value)
+  }
 
   return {
-	  /*
-    dark: getThemeFromLocalStorage(),
-    toggleTheme() {
-      this.dark = !this.dark
-      setThemeToLocalStorage(this.dark)
-    },*/
+	  showSuccessMessage:false,
+	  showAlertMessage:false,
+	  tooltip:false,
+	  currentkkm:'',
+	  command:'',
+	  kkmdata:'',
+	  kkmerr:'',
+	  isError:false,
+	  errormsg:"",
 	getServSettings: function() {
 		fetch("/api/GetServSetting",
 			{
@@ -45,11 +42,76 @@ function data() {
 			  //window: window // null
 			}
 		)
-		.then(response => response.text())
-		.then(data => this.kkndata=data)
+		.then(response => response.json())
+		.then(data => {this.kkmsdata=data;this.kkmids=data.deviceids;if(getcurKKMFromLocalStorage()!='')this.currentkkm=getcurKKMFromLocalStorage();else if(data.deviceids.length>0)this.currentkkm=data.deviceids[0];})
 		.catch(err => console.log(err));
 	},
-	kkmdata: {},
+	setServSettings: function() {
+		setcurKKMToLocalStorage(this.currentkkm);
+		this.kkmdata.maxattempt=Number(this.kkmdata.maxattempt);
+		this.kkmdata.adminpassword=Number(this.kkmdata.adminpassword);
+		this.kkmdata.password=Number(this.kkmdata.password);
+		this.kkmdata.timeout=Number(this.kkmdata.timeout);
+		this.kkmdata.portconf.baud=Number(this.kkmdata.portconf.baud);
+		this.kkmdata.portconf.readtimeout=Number(this.kkmdata.portconf.readtimeout);
+		this.kkmdata.portconf.size=Number(this.kkmdata.portconf.size);
+		this.kkmdata.portconf.parity=Number(this.kkmdata.portconf.parity);
+		this.kkmdata.portconf.stopbits=Number(this.kkmdata.portconf.stopbits);
+		this.kkmdata.portconf.startbits=Number(this.kkmdata.portconf.startbits);
+		fetch("/api/SetServSetting",
+			{
+			  method: "PUT", // POST, PUT, DELETE, etc.
+			  headers: {
+				"Content-Type": "application/json;charset=UTF-8"
+			  },
+			  body: JSON.stringify(this.kkmdata), // undefined, string, FormData, Blob, BufferSource или URLSearchParams
+			  cache: "no-store", // no-store, reload, no-cache, force-cache или only-if-cached
+			}
+		)
+		.then(response => response.json())
+		.then(data => {if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;};this.showSuccessMessage=true;this.kkmsdata=data;this.kkmids=data.deviceids;if(data.deviceids.length>0)this.currentkkm=getcurKKMFromLocalStorage();})
+		.catch(err => {this.showAlertMessage=true;this.errormsg=err;console.log(err);});
+	},
+	savecurkkm: function(id) {
+		setcurKKMToLocalStorage(id);
+	},
+	runCommand: function(){
+		this.kkmdata='';this.kkmerr='';
+		if(this.command!='' && this.currentkkm!=''){
+			fetch("/api/run/"+this.currentkkm+"/"+this.command+"?params[0]=30",
+				{
+				  method: "POST", // POST, PUT, DELETE, etc.
+				  headers: {
+					"Content-Type": "application/json;charset=UTF-8"
+				  },
+				  mode: 'cors',
+				  //body: JSON.stringify({params:[30]}), // undefined, string, FormData, Blob, BufferSource или URLSearchParams
+				  cache: "no-store", // no-store, reload, no-cache, force-cache или only-if-cached
+				}
+			)
+			.then(response => response.json())
+			.then(data => {if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;}this.kkmdata=data.kkmdata;this.kkmerr=data.kkmerr;})
+			.catch(err => {this.showAlertMessage=true;this.errormsg=err;console.log(err);});
+		}
+		
+	},
+	kkmsdata: {},
+	kkmdata: {
+		name: "new kkm",
+		adminpassword: 30,
+		codepage: "cp1251",
+		deviceid: "4ff2d011-898d-41c1-9bb4-777b8f69b60a",
+		kkmparam: {kkmserialnum: "12345", inn: "1234567890", fname: "ООО Борей"},
+		maxattempt: 12,
+		password: 1,
+		portconf: {name: "/dev/ttyUSB0", baud: 115200, readtimeout: 50, size: 8, parity: 0, stopbits: 1,startbits: 1},
+		timeout: 0,
+	},
+	kkmids: [],
+	getkkmdata(id) {
+		this.kkmdata=this.kkmsdata[id];
+		return this.kkmsdata[id];
+	},
     isSideMenuOpen: false,
     toggleSideMenu() {
       this.isSideMenuOpen = !this.isSideMenuOpen

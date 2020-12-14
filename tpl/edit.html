@@ -8,7 +8,12 @@
   href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
   rel="stylesheet"
   />
-  <link rel="stylesheet" href="./assets/css/main.css" />
+  
+  <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+  .form-select{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23a0aec0'%3E%3Cpath d='M15.3 9.3a1 1 0 011.4 1.4l-4 4a1 1 0 01-1.4 0l-4-4a1 1 0 011.4-1.4l3.3 3.29 3.3-3.3z'/%3E%3C/svg%3E");-webkit-appearance:none;-moz-appearance:none;appearance:none;-webkit-print-color-adjust:exact;color-adjust:exact;background-repeat:no-repeat;background-color:#fff;border-color:#e2e8f0;border-width:1px;border-radius:.25rem;padding:.25rem 2.5rem .25rem .75rem;font-size:1rem;line-height:1.5;background-position:right .5rem center;background-size:1.5em 1.5em}.form-select::-ms-expand{color:#a0aec0;border:none}@media not print{.form-select::-ms-expand{display:none}}@media print and (-ms-high-contrast:active),print and (-ms-high-contrast:none){.form-select{padding-right:.75rem}}.form-select:focus{outline:none;box-shadow:0 0 0 3px rgba(66,153,225,.5);border-color:#63b3ed}.form-checkbox{-webkit-appearance:none;-moz-appearance:none;appearance:none;-webkit-print-color-adjust:exact;color-adjust:exact;display:inline-block;vertical-align:middle;background-origin:border-box;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;flex-shrink:0;height:1em;width:1em;color:#4299e1;background-color:#fff;border-color:#e2e8f0;border-width:1px;border-radius:.25rem}.form-checkbox:checked{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg viewBox='0 0 16 16' fill='%23fff' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5.707 7.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4a1 1 0 00-1.414-1.414L7 8.586 5.707 7.293z'/%3E%3C/svg%3E");border-color:transparent;background-color:currentColor;background-size:100% 100%;background-position:50%;background-repeat:no-repeat}@media not print{.form-checkbox::-ms-check{border-width:1px;color:transparent;background:inherit;border-color:inherit;border-radius:inherit}}.form-checkbox:focus{outline:none;box-shadow:0 0 0 3px rgba(66,153,225,.5);border-color:#63b3ed}
+  .form-input{-webkit-appearance:none;-moz-appearance:none;appearance:none;background-color:#fff;border-color:#e2e8f0;border-width:1px;border-radius:.25rem;font-size:1rem;line-height:1.5}.form-input::-moz-placeholder{color:#9e9e9e;opacity:1}.form-input:-ms-input-placeholder{color:#9e9e9e;opacity:1}.form-input::-ms-input-placeholder{color:#9e9e9e;opacity:1}.form-input::placeholder{color:#9e9e9e;opacity:1}.form-input:focus{outline:none;box-shadow:0 0 0 3px rgba(66,153,225,.5);border-color:#63b3ed}.form-textarea{-webkit-appearance:none;-moz-appearance:none;appearance:none;background-color:#fff;border-color:#e2e8f0;border-width:1px;border-radius:.25rem;padding:.5rem .75rem;font-size:1rem;line-height:1.5}.form-textarea::-moz-placeholder{color:#9e9e9e;opacity:1}.form-textarea:-ms-input-placeholder{color:#9e9e9e;opacity:1}.form-textarea::-ms-input-placeholder{color:#9e9e9e;opacity:1}.form-textarea::placeholder{color:#9e9e9e;opacity:1}.form-textarea:focus{outline:none;box-shadow:0 0 0 3px rgba(66,153,225,.5);border-color:#63b3ed}
+    </style>
   <script
   src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.x.x/dist/alpine.min.js"
   defer
@@ -22,8 +27,6 @@
   src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js"
   defer
   ></script>
-  <script src="./assets/js/charts-lines.js" defer></script>
-  <script src="./assets/js/charts-pie.js" defer></script>
   </head>
   <body>
   <div
@@ -545,26 +548,6 @@
       </div>
     </div>
     <ul class="flex items-center flex-shrink-0 space-x-6">
-      <!-- Theme toggler -->
-      <li class="flex">
-      <button
-      class="rounded-md focus:outline-none focus:shadow-outline-purple"
-      @click="toggleTheme"
-      aria-label="Toggle color mode"
-      >
-   
-        <svg
-        class="w-5 h-5"
-        aria-hidden="true"
-        fill="currentColor"
-        viewBox="0 0 20 20"
-        >
-        <path
-        d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"
-        ></path>
-        </svg>
-      </button>
-      </li>
       <!-- Notifications menu -->
       <li class="relative">
       <button
@@ -735,269 +718,280 @@
     </ul>
     </div>
     </header>
-    <main class="h-full overflow-y-auto">
-    <div class="container px-6 mx-auto grid">
-    <h1
-      class="my-6 text-2xl font-semibold text-gray-700 "
-    >
-      Доступные ККМ
-    </h1>
-     <!-- Cards -->
-    <div class="grid gap-6 mb-8 md:grid-cols-2 xl:grid-cols-4">
-      <!-- Card -->
-	  <template x-for="id in kkmids" :key="id">
-		  <div
-		  class="flex items-center p-4 bg-white rounded-lg shadow-xs border-t-4 border-blue-500 shadow-md"
-		  >
-		  <div
-		  class="p-3 mr-4 text-orange-500 bg-orange-100 rounded-full"
-		  >
-		  <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-			<path
-			fill-rule="evenodd"
-			d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z"
-			clip-rule="evenodd"
-			></path>
-			</svg>
-		  </div>
-		  <div>
-		  <h2
-			class="text-lg font-semibold text-gray-700 "
-			x-text="getkkmdata(id).name"
-		  >
-		  </h2>
-		  <p
-			class="mb-2 text-sm font-medium text-gray-600 "
-			x-text="id"
-		  >
-		  </p>
-
-		  </div>
-		  <div
-		  x-on:mouseover="tooltip = true" x-on:mouseleave="tooltip = false" class="cursor-pointer"
-		  >
-		  <button x-on:click="savecurkkm(id);window.location.href='/edit'"
-			class="font-bold py-2 px-4 rounded-lg w-full"
-		  >
-			<div class="relative" x-cloak x-show.transition.origin.top="tooltip">
-			  <div class="absolute ml-4 top-0 z-10 w-32 p-2 -mt-1 text-sm leading-tight text-white transform -translate-x-1/2 -translate-y-full bg-orange-500 rounded-lg shadow-lg">
-				Редактировать
-			  </div>
-			  <svg class="absolute ml-12 z-10 w-6 h-6 text-orange-500 transform -translate-x-12 -translate-y-3 fill-current stroke-current" width="8" height="8">
-				<rect x="12" y="-10" width="8" height="8" transform="rotate(45)" />
-			  </svg>
+    <main class="h-full pb-16 overflow-y-auto">
+		<div class="container px-6 mx-auto grid">
+            <h2
+              class="my-2 text-2xl font-semibold text-gray-700"
+            >
+              Настройка ККМ
+            </h2>
+            <!-- Выбор ККМ -->
+			<div class="px-4 py-3 mb-4 bg-white rounded-lg shadow-md">
+				<label class="block mt-4 text-sm">
+					<span class="text-gray-700">ККМ</span>
+						<select
+							class="block w-full mt-1 text-sm form-select focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
+							x-model="currentkkm"
+						>
+							<option value="" >Выберите ККМ</option>
+						<template x-for="id in kkmids" :key="id">
+							<option :value="id" x-text="getkkmdata(id).name" x-bind:selected="id==currentkkm" ></option>
+						</template>
+						</select>
+				</label>
 			</div>
-			<svg class="ml-2 w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-		  </button>
-		  <div>
-	  </template>
-      </div>
-    </div>
-	
-    <!-- New Table -->
-    <div class="w-full overflow-hidden rounded-lg shadow-xs">
-      <div class="w-full overflow-x-auto">
-	  <h2>Последние чеки</h2>
-     <table class="w-full whitespace-no-wrap">
-      <thead>
-        <tr
-        class="text-xs font-semibold tracking-wide text-left text-gray-500 uppercase border-b  bg-gray-50"
-        >
-        <th class="px-4 py-3">Дата</th>
-        <th class="px-4 py-3">ККМ</th>
-        <th class="px-4 py-3">Сумма</th>
-        <th class="px-4 py-3">Параметры</th>
-        </tr>
-      </thead>
-      <tbody
-        class="bg-white divide-y"
-      >
-        <tr class="text-gray-700 ">
-		<td class="px-4 py-3 text-sm">
-        6/10/2020
-        </td>
-        <td class="px-4 py-3 text-sm">
-        Новая ккм
-        </td>
-        <td class="px-4 py-3 text-sm">
-        $ 863.45
-        </td>
-        <td class="px-4 py-3 text-xs">
-        <span
-          class="px-2 py-1 font-semibold leading-tight text-green-700 bg-green-100 rounded-full"
-        >
-          Approved
-        </span>
-        </td>
-        </tr>
-      </tbody>
-      </table>
-      </div>
-      <div
-      class="grid px-4 py-3 text-xs font-semibold tracking-wide text-gray-500 uppercase border-t  bg-gray-50 sm:grid-cols-9"
-      >
-      <span class="flex items-center col-span-3">
-      Показано 1-25 из 100
-      </span>
-      <span class="col-span-2"></span>
-      <!-- Pagination -->
-      <span class="flex col-span-4 mt-2 sm:mt-auto sm:justify-end">
-      <nav aria-label="Table navigation">
-        <ul class="inline-flex items-center">
-        <li>
-        <button
-          class="px-3 py-1 rounded-md rounded-l-lg focus:outline-none focus:shadow-outline-purple"
-          aria-label="Previous"
-        >
-          <svg
-          aria-hidden="true"
-          class="w-4 h-4 fill-current"
-          viewBox="0 0 20 20"
+			<!-- Данные организации -->
+            <h4
+              class="mb-2 text-lg font-semibold text-gray-600"
+            >
+              Организация
+            </h4>
+            <div
+              class="px-4 py-3 mb-4 bg-white rounded-lg shadow-md"
+            >
+              <label class="block text-sm">
+                <span class="text-gray-700">
+                  Наименование организации
+                </span>
+                <input
+  				  class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+				  :class="{'border-green-600 focus:border-red-400 focus:shadow-outline-red': isError}"
+				  x-model="kkmdata.kkmparam.fname"
+                  placeholder="Наименование"
+                />
+                <span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+                </span>
+              </label>
+              <label class="block mt-4 text-sm">
+                <span class="text-gray-700">
+                  ИНН
+                </span>
+                <input type="number" max="999999999999"
+                  class="block px-4 w-full mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+                  placeholder="1234567890"
+				  x-model="kkmdata.kkmparam.inn"
+                />
+                <span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+                </span>
+              </label>
+				<label class="block text-sm">
+                <span class="text-gray-700">
+                  Серийный номер ккм
+                </span>
+                <input type="number"
+  				  class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+				  :class="{'border-green-600 focus:border-red-400 focus:shadow-outline-red': isError}"
+				  x-model="kkmdata.kkmparam.kkmserialnum"
+                  placeholder="Серийный номер"
+                />
+                <span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+                </span>
+              </label>
+            </div>
+			<!-- Настройки ККМ -->
+			<h4
+              class="mb-2 text-lg font-semibold text-gray-600"
+            >
+              Настройки ККМ
+            </h4>
+			<div
+              class="px-4 py-3 mb-4 bg-white rounded-lg shadow-md"
+            >
+				<label class="block text-sm">
+					<span class="text-gray-700 dark:text-gray-400">Наименование</span>
+					<input
+					  class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+					  x-model="kkmdata.name"
+					  placeholder="Наименование ккм"
+					/>
+					<span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+				</label>
+				<label class="block text-sm">
+					<span class="text-gray-700">Пароль администратора ККМ</span>
+					<input
+					  class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+					  x-model="kkmdata.adminpassword"
+					  placeholder="Пароль администратора"
+					/>
+					<span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+				</label>
+				<label class="block text-sm">
+					<span class="text-gray-700">Пароль кассира</span>
+					<input
+					  class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+					  x-model="kkmdata.password"
+					  placeholder="Пароль кассира"
+					/>
+					<span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+				</label>
+				<label class="block mt-4 text-sm">
+					<span class="text-gray-700 dark:text-gray-400">Codepage</span>
+						<select
+							class="block w-full mt-1 text-sm dark:text-gray-300 form-select focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
+							x-model="kkmdata.codepage"
+						>
+							<option value="cp1251" x-bind:selected="kkmdata.codepage=='cp1251'">cp1251</option>
+							<option value="utf-8" x-bind:selected="kkmdata.codepage=='utf-8'" >utf-8</option>
+						</select>
+				</label>
+				<label class="block text-sm">
+					<span class="text-gray-700">Количество попыток связи с ккм</span>
+					<input type="number" min="1" max="25"
+					  class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+					  x-model="kkmdata.maxattempt"
+					  placeholder="Количество попыток"
+					/>
+					<span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+				</label>
+				<label class="block text-sm">
+					<span class="text-gray-700">Таймаут между попытками, мсек</span>
+					<input type="number" min="0" max="50000"
+					  class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+					  x-model="kkmdata.timeout"
+					  placeholder="timeout"
+					/>
+					<span class="text-xs text-red-600" x-text="errormsg" x-show="isError">
+				</label>
+			</div>
+            <!-- port -->
+            <h4
+              class="my-2 text-lg font-semibold text-gray-600 dark:text-gray-300"
+            >
+              Настройки порта
+            </h4>
+            <div
+              class="px-4 py-3 mb-4 bg-white rounded-lg shadow-md dark:bg-gray-800"
+            >
+				<label class="block mt-4 text-sm">
+					<span class="text-gray-700">Порт</span>
+						<select
+							class="block w-full mt-1 text-sm form-select focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
+							x-model="kkmdata.portconf.name"
+						>
+							<option value="/dev/ttyS0" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS0'">/dev/ttyS0</option>
+							<option value="/dev/ttyS1" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS1'">/dev/ttyS1</option>
+							<option value="/dev/ttyS2" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS2'">/dev/ttyS2</option>
+							<option value="/dev/ttyS3" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS3'">/dev/ttyS3</option>
+							<option value="/dev/ttyS4" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS4'">/dev/ttyS4</option>
+							<option value="/dev/ttyS5" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS5'">/dev/ttyS5</option>
+							<option value="/dev/ttyS6" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS6'">/dev/ttyS6</option>
+							<option value="/dev/ttyS7" x-bind:selected="kkmdata.portconf.name=='/dev/ttyS7'">/dev/ttyS7</option>
+							<option value="/dev/ttyUSB0" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB0'">/dev/ttySB0</option>
+							<option value="/dev/ttyUSB1" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB1'">/dev/ttyUSB1</option>
+							<option value="/dev/ttyUSB2" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB2'">/dev/ttyUSB2</option>
+							<option value="/dev/ttyUSB3" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB3'">/dev/ttyUSB3</option>
+							<option value="/dev/ttyUSB4" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB4'">/dev/ttyUSB4</option>
+							<option value="/dev/ttyUSB5" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB5'">/dev/ttyUSB5</option>
+							<option value="/dev/ttyUSB6" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB6'">/dev/ttyUSB6</option>
+							<option value="/dev/ttyUSB7" x-bind:selected="kkmdata.portconf.name=='/dev/ttyUSB7'">/dev/ttyUSB7</option>
+							<option value="com1" x-bind:selected="kkmdata.portconf.name=='com1'" >COM1</option>
+							<option value="com2" x-bind:selected="kkmdata.portconf.name=='com2'" >COM2</option>
+							<option value="com3" x-bind:selected="kkmdata.portconf.name=='com3'" >COM3</option>
+							<option value="com4" x-bind:selected="kkmdata.portconf.name=='com4'" >COM4</option>
+							<option value="com5" x-bind:selected="kkmdata.portconf.name=='com5'" >COM5</option>
+							<option value="com6" x-bind:selected="kkmdata.portconf.name=='com6'" >COM6</option>
+							<option value="com7" x-bind:selected="kkmdata.portconf.name=='com7'" >COM7</option>
+							<option value="com8" x-bind:selected="kkmdata.portconf.name=='com8'" >COM8</option>
+						</select>
+				</label>
+				<label class="block mt-4 text-sm">
+					<span class="text-gray-700">Скорость, бод</span>
+						<select
+							class="block w-full mt-1 text-sm form-select focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
+							x-model="kkmdata.portconf.baud"
+						>
+							<option value="2400" x-bind:selected="kkmdata.portconf.baud=='2400'">2400</option>
+							<option value="4800" x-bind:selected="kkmdata.portconf.baud=='4800'" >4800</option>
+							<option value="9600" x-bind:selected="kkmdata.portconf.baud=='9600'" >9600</option>
+							<option value="19200" x-bind:selected="kkmdata.portconf.baud=='19200'" >19200</option>
+							<option value="38400" x-bind:selected="kkmdata.portconf.baud=='38400'" >38400</option>
+							<option value="57600" x-bind:selected="kkmdata.portconf.baud=='57600'" >57600</option>
+							<option value="115200" x-bind:selected="kkmdata.portconf.baud=='115200'" >115200</option>
+							<option value="230400" x-bind:selected="kkmdata.portconf.baud=='230400'" >230400</option>
+							<option value="460800" x-bind:selected="kkmdata.portconf.baud=='460800'" >460800</option>
+							<option value="921600" x-bind:selected="kkmdata.portconf.baud=='921600'" >921600</option>
+						</select>
+				</label>
+				<label class="block mt-4 text-sm">
+					<span class="text-gray-700">Размер данных (0-значение по умолчанию)</span>
+						<select
+							class="block w-full mt-1 text-sm form-select focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
+							x-model="kkmdata.portconf.size"
+						>
+							<option value="0" x-bind:selected="kkmdata.portconf=='0'">0</option>
+							<option value="8" x-bind:selected="kkmdata.portconf=='8'" >8</option>
+						</select>
+				</label>
+				<label class="block mt-4 text-sm">
+					<span class="text-gray-700">Четность</span>
+						<select
+							class="block w-full mt-1 text-sm form-select focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
+							x-model="kkmdata.portconf.parity"
+						>
+							<option value="0" x-bind:selected="kkmdata.portconf.parity=='0'">Нет</option>
+							<option value="1" x-bind:selected="kkmdata.portconf.parity=='1'" >Да</option>
+						</select>
+				</label>
+				<label class="block mt-4 text-sm">
+					<span class="text-gray-700">Количество стоп-бит</span>
+						<select
+							class="block w-full mt-1 text-sm form-select focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
+							x-model="kkmdata.portconf.stopbits"
+						>
+							<option value="0" x-bind:selected="kkmdata.portconf=='0'">0</option>
+							<option value="1" x-bind:selected="kkmdata.portconf=='1'" >1</option>
+						</select>
+				</label>
+				<label class="block text-sm">
+					<span class="text-gray-700">Таймаут порта, мсек (0-500000)</span>
+					<input type="number" min="0" max="500000"
+					class="block w-full px-4 mt-1 text-sm focus:border-purple-400 focus:outline-none focus:shadow-outline-purple form-input"
+					x-model="kkmdata.portconf.readtimeout"
+					placeholder="0-по умолчанию"
+					/>
+              </label>
+			</div>
+        </div>
+		<div>
+          <button
+			class="px-4 py-2 text-sm font-medium leading-5 text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple"
+			x-on:click="setServSettings"
           >
-          <path
-          d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-          clip-rule="evenodd"
-          fill-rule="evenodd"
-          ></path>
-          </svg>
-        </button>
-        </li>
-        <li>
-        <button
-          class="px-3 py-1 rounded-md focus:outline-none focus:shadow-outline-purple"
-        >
-          1
-        </button>
-        </li>
-        <li>
-        <button
-          class="px-3 py-1 rounded-md focus:outline-none focus:shadow-outline-purple"
-        >
-          2
-        </button>
-        </li>
-        <li>
-        <button
-          class="px-3 py-1 text-white transition-colors duration-150 bg-purple-600 border border-r-0 border-purple-600 rounded-md focus:outline-none focus:shadow-outline-purple"
-        >
-          3
-        </button>
-        </li>
-        <li>
-        <button
-          class="px-3 py-1 rounded-md focus:outline-none focus:shadow-outline-purple"
-        >
-          4
-        </button>
-        </li>
-        <li>
-        <span class="px-3 py-1">...</span>
-        </li>
-        <li>
-        <button
-          class="px-3 py-1 rounded-md focus:outline-none focus:shadow-outline-purple"
-        >
-          8
-        </button>
-        </li>
-        <li>
-        <button
-          class="px-3 py-1 rounded-md focus:outline-none focus:shadow-outline-purple"
-        >
-          9
-        </button>
-        </li>
-        <li>
-        <button
-          class="px-3 py-1 rounded-md rounded-r-lg focus:outline-none focus:shadow-outline-purple"
-          aria-label="Next"
-        >
-          <svg
-          class="w-4 h-4 fill-current"
-          aria-hidden="true"
-          viewBox="0 0 20 20"
-          >
-          <path
-          d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-          clip-rule="evenodd"
-          fill-rule="evenodd"
-          ></path>
-          </svg>
-        </button>
-        </li>
-        </ul>
-      </nav>
-      </span>
-      </div>
-    </div>
-
-    <!-- Charts -->
-    <h2
-      class="my-6 text-2xl font-semibold text-gray-700 "
-    >
-      Графики
-    </h2>
-    <div class="grid gap-6 mb-8 md:grid-cols-2">
-      <div
-      class="min-w-0 p-4 bg-white rounded-lg shadow-xs "
-      >
-      <h4 class="mb-4 font-semibold text-gray-800 ">
-      Продажи по ккм
-      </h4>
-      <canvas id="pie"></canvas>
-      <div
-      class="flex justify-center mt-4 space-x-3 text-sm text-gray-600 "
-      >
-      <!-- Chart legend -->
-      <div class="flex items-center">
-        <span
-        class="inline-block w-3 h-3 mr-1 bg-blue-500 rounded-full"
-        ></span>
-        <span>Новая ккм</span>
-      </div>
-      <div class="flex items-center">
-        <span
-        class="inline-block w-3 h-3 mr-1 bg-teal-600 rounded-full"
-        ></span>
-        <span>Shoes</span>
-      </div>
-      <div class="flex items-center">
-        <span
-        class="inline-block w-3 h-3 mr-1 bg-purple-600 rounded-full"
-        ></span>
-        <span>Bags</span>
-      </div>
-      </div>
-      </div>
-      <div
-      class="min-w-0 p-4 bg-white rounded-lg shadow-xs "
-      >
-      <h4 class="mb-4 font-semibold text-gray-800 ">
-      Продажи по дням
-      </h4>
-      <canvas id="line"></canvas>
-      <div
-      class="flex justify-center mt-4 space-x-3 text-sm text-gray-600 "
-      >
-      <!-- Chart legend -->
-      <div class="flex items-center">
-        <span
-        class="inline-block w-3 h-3 mr-1 bg-teal-600 rounded-full"
-        ></span>
-        <span>Organic</span>
-      </div>
-      <div class="flex items-center">
-        <span
-        class="inline-block w-3 h-3 mr-1 bg-purple-600 rounded-full"
-        ></span>
-        <span>Paid</span>
-      </div>
-      </div>
-      </div>
-    </div>
-    </div>
+                  Сохранить
+          </button>
+        </div>
+		  <!-- Предупреждения -->
+		<div x-show="showAlertMessage" x-transition:enter="transition ease-out duration-300"
+							x-transition:enter-start="opacity-0 transform scale-90"
+							x-transition:enter-end="opacity-100 transform scale-100"
+							x-transition:leave="transition ease-in duration-300"
+							x-transition:leave-start="opacity-100 transform scale-100"
+							x-transition:leave-end="opacity-0 transform scale-90">
+				<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 my-4 relative"
+					role="alert">
+					<svg class="w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M12.432 0c1.34 0 2.01.912 2.01 1.957 0 1.305-1.164 2.512-2.679 2.512-1.269 0-2.009-.75-1.974-1.99C9.789 1.436 10.67 0 12.432 0zM8.309 20c-1.058 0-1.833-.652-1.093-3.524l1.214-5.092c.211-.814.246-1.141 0-1.141-.317 0-1.689.562-2.502 1.117l-.528-.88c2.572-2.186 5.531-3.467 6.801-3.467 1.057 0 1.233 1.273.705 3.23l-1.391 5.352c-.246.945-.141 1.271.106 1.271.317 0 1.357-.392 2.379-1.207l.6.814C12.098 19.02 9.365 20 8.309 20z"/></svg>
+					<p x-text="errormsg"></p>
+					<span class="absolute top-0.5 right-0.5 pr-2 py-3" x-on:click="showAlertMessage=false">
+						<svg class="h-6 w-6 text-red" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
+					</span>
+				</div>
+		</div>
+		<div x-show="showSuccessMessage" x-transition:enter="transition ease-out duration-300"
+							x-transition:enter-start="opacity-0 transform scale-90"
+							x-transition:enter-end="opacity-100 transform scale-100"
+							x-transition:leave="transition ease-in duration-300"
+							x-transition:leave-start="opacity-100 transform scale-100"
+							x-transition:leave-end="opacity-0 transform scale-90">
+			<div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 my-4 relative"
+					role="success">
+					<p>Все изменения записаны!</p>
+					  <span class="absolute top-0.5 right-0.5 pr-2 py-3" x-on:click="showSuccessMessage=false">
+						<svg class="h-6 w-6 text-red" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
+					  </span>	
+			</div>
+		</div>
     </main>
-  </div>
-  </div>
-  </body>
+	</div>
+	</div>
+</body>
 </html>

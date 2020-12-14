@@ -28,23 +28,31 @@ func parseAnswer(insdata []byte) (command uint16, errcode byte, data []byte) {
 	return
 }
 
-func kkmBeep(k *drv.KkmDrv) bool {
+func kkmRunFunction(k *drv.KkmDrv, fname string, param []byte) (errcode byte, data []byte, err error) {
+	switch fname {
+	case "beep":
+		err = kkmBeep(k)
+	}
+	return
+}
+
+func kkmBeep(k *drv.KkmDrv) error {
 	res, err := k.Connect()
 	// Make sure to close it later.
 	defer k.Close()
 	if res == 0 {
 		log.Println("Состояние ККМ не извесно, выходим")
-		return false
+		return errors.New("Состояние ККМ не извесно")
 	}
 	errcode, _, err := k.SendCommand(0x13, k.AdminPassword[:])
 	if err != nil {
 		log.Printf("kkmBeep: %v", err)
-		return false
+		return err
 	}
 	if errcode > 0 {
-		return false
+		return errors.New(k.ErrState(errcode))
 	}
-	return true
+	return nil
 }
 
 func kkmOpenShift(k *drv.KkmDrv) error {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -30,6 +31,7 @@ const MaxAttemp = 4
 
 //KkmDrv структура драйвера
 type KkmDrv struct {
+	Name          string
 	DeviceID      string
 	Port          *serial.Port
 	Opt           serial.Config
@@ -54,9 +56,9 @@ type KkmParam struct {
 
 //PortConf копия конфигурации порта для сериализации
 type PortConf struct {
-	Name        string        `json:"name"`
-	Baud        int           `json:"baud"`
-	ReadTimeout time.Duration `json:"readtimeout"` // Total timeout
+	Name        string `json:"name"`
+	Baud        int    `json:"baud"`
+	ReadTimeout int    `json:"readtimeout"` // Total timeout  time.Duration
 	// Size is the number of data bits. If 0, DefaultSize is used.
 	Size byte `json:"size"`
 	// Parity is the bit to use and defaults to ParityNone (no parity bit).
@@ -67,6 +69,7 @@ type PortConf struct {
 
 //KkmDrvSer копия конфигурации ккм для сериализации
 type KkmDrvSer struct {
+	Name          string   `json:"name"`
 	DeviceID      string   `json:"deviceid"`
 	Opt           PortConf `json:"portconf"`
 	TimeOut       int64    `json:"timeout"`
@@ -102,12 +105,51 @@ func digit2str(d uint32) []byte {
 	return bs
 }
 
+func getPortName() ([]byte, error) {
+	//где мы? windows linux darwin?
+	goos := runtime.GOOS
+	ports := make([]string, 256)
+	bauds := []int{2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600}
+	switch goos {
+	case "linux":
+		for i := 0; i < 128; i++ {
+			ports[i] = "/dev/ttyS" + strconv.FormatInt(int64(i), 10)
+		}
+		for i := 0; i < 128; i++ {
+			ports[i] = "/dev/ttyUSB" + strconv.FormatInt(int64(i), 10)
+		}
+	case "windows":
+		for i := 0; i < 256; i++ {
+			ports[i] = "com" + strconv.FormatInt(int64(i), 10)
+		}
+	}
+	//попробуем найти действующие порты
+	type conf struct {
+		baud int
+		port string
+	}
+	confok := make([]conf, 0, 256)
+	var cfg conf
+	for i := 0; i < 256; i++ {
+		for b := 0; b < len(bauds); b++ {
+			c := &serial.Config{Name: ports[i], Baud: bauds[b], ReadTimeout: time.Second * 5}
+			_, err := serial.OpenPort(c)
+			if err == nil {
+				cfg.baud = bauds[b]
+				cfg.port = ports[i]
+				confok = append(confok, cfg)
+			}
+		}
+	}
+	return json.Marshal(confok)
+}
+
 //Serialize преобразует данные в json byte
 func (kkm *KkmDrv) Serialize() ([]byte, error) {
 	return json.Marshal(kkm.GetStruct())
 }
 
-//GetStruct преобразует данные в json byte
+//GetStruct преобразует данные в структуру для последующего преобазования в json byte
 func (kkm *KkmDrv) GetStruct() KkmDrvSer {
 	var pconf = PortConf{}
 	pconf.Name = kkm.Opt.Name
@@ -115,7 +157,7 @@ func (kkm *KkmDrv) GetStruct() KkmDrvSer {
 	pconf.Parity = byte(kkm.Opt.Parity)
 	pconf.StopBits = byte(kkm.Opt.StopBits)
 	pconf.Size = byte(kkm.Opt.Size)
-	pconf.ReadTimeout = kkm.Opt.ReadTimeout
+	pconf.ReadTimeout = int(kkm.Opt.ReadTimeout / time.Millisecond)
 	var param = KkmParam{}
 	param.Fname = kkm.Param.Fname
 	param.Inn = kkm.Param.Inn
@@ -124,6 +166,7 @@ func (kkm *KkmDrv) GetStruct() KkmDrvSer {
 	res := binary.LittleEndian.Uint32(kkm.AdminPassword[:])
 	sr.AdminPassword = int64(res)
 	sr.CodePage = kkm.CodePage
+	sr.Name = kkm.Name
 	sr.DeviceID = kkm.DeviceID
 	sr.MaxAttemp = kkm.MaxAttemp
 	sr.Password = int64(binary.LittleEndian.Uint32(kkm.Password[:]))
@@ -143,6 +186,7 @@ func (kkm *KkmDrv) SetDataFromStruct(jkkm *KkmDrvSer) {
 	kkm.Opt.Size = jkkm.Opt.Size
 	kkm.Opt.ReadTimeout = time.Duration(jkkm.Opt.ReadTimeout) * time.Millisecond
 
+	kkm.Name = jkkm.Name
 	kkm.CodePage = jkkm.CodePage
 	kkm.TimeOut = jkkm.TimeOut
 	b := make([]byte, 4)
@@ -199,6 +243,7 @@ func UnSerialize(jdata []byte) (*KkmDrv, error) {
 		kkm.Opt.Size = uint8(toInt(pcf["size"]))
 		kkm.Opt.ReadTimeout = time.Duration(toInt(pcf["readtimeout"])) * time.Millisecond
 	}
+	kkm.Name = dat["name"].(string)
 	kkm.Busy = false
 	kkm.CodePage = dat["codepage"].(string)
 	kkm.DeviceID = dat["deviceid"].(string)
@@ -806,7 +851,7 @@ func (kkm *KkmDrv) ReadAnswer() ([]byte, int, error) {
 		}
 		kkm.SendENQ() //приняли что то не понятное, запросим повтор ответа
 	}
-	return nil, 0, errors.New("Не получен правильный ответ в течении " + string(MaxAttemp) + " попыток") //read answe error
+	return nil, 0, errors.New("Не получен правильный ответ в течении " + strconv.FormatInt((int64)(MaxAttemp), 10) + " попыток") //read answe error
 }
 
 //Connect подключает ККМ
@@ -825,7 +870,7 @@ func (kkm *KkmDrv) Connect() (int, error) {
 	}
 	log.Println("port is opening")
 	for n := 0; n < MaxAttemp; n++ {
-		ret, err := kkm.checkState()
+		ret, err := kkm.checkState() //=kkm.SendENQ() and read
 		if err != nil {
 			return 0, err
 		}

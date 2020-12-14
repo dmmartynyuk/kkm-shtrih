@@ -47,7 +47,7 @@ var MAXATTEMPT int64 = 12
 //BYTETIMEOUT задержка для получения одного байта порта
 var BYTETIMEOUT int64 = 50 //milsec
 //PORTTIMEOUT задержка для ккм
-var PORTTIMEOUT int64 = 5000 //milsec
+var PORTTIMEOUT int64 = 5000 //milsec, 5sec
 
 // itob returns an 8-byte little endian representation of v.
 func itob(v int) []byte {
@@ -63,7 +63,72 @@ func btoi(v []byte) int64 {
 }
 
 func runCommand(c *gin.Context) {
-	c.Param("command")
+	hdata := make(map[string]interface{})
+	deviceID := c.Param("DeviceID")
+	kkm, err := KkmServ.GetDrv(deviceID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
+		return
+	}
+	cmd := c.Param("command")
+	if cmd == "" {
+		cmd = c.Query("command")
+	}
+	if cmd == "" {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": "нет комманды"})
+		return
+	}
+
+	strparams := c.QueryMap("params")
+	params := make([]byte, 0, 64)
+	//первым идет пароль, 4 байта, потом все остальные по-порядку
+	for i := 0; i < len(strparams); i++ {
+		if v, ok := strparams[strconv.FormatInt(int64(i), 10)]; ok {
+			vint, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"error": true, "message": "параметры комманды не верны"})
+				return
+			}
+			res := itob((int)(vint))
+			if i == 0 {
+				params = append(params, res[:4]...)
+			} else {
+				params = append(params, res[0])
+			}
+		}
+
+	}
+	var icmd int64
+	if cmd[0] == byte('0') && cmd[1] == byte('x') {
+		icmd, err = strconv.ParseInt(cmd, 0, 10)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"error": true, "message": "плохая комманда"})
+			return
+		}
+		kkmerr, data, err := kkm.SendCommand((uint16)(icmd), params)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+			return
+		}
+		hdata["deviceID"] = deviceID
+		hdata["kkmerr"] = kkmerr
+		hdata["kkmdata"] = data
+		hdata["error"] = false
+		hdata["message"] = "ok"
+		c.JSON(http.StatusOK, hdata)
+		return
+	}
+	kkmerr, data, err := kkmRunFunction(kkm, cmd, params)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+		return
+	}
+	hdata["deviceID"] = deviceID
+	hdata["kkmerr"] = kkmerr
+	hdata["kkmdata"] = data
+	hdata["error"] = false
+	c.JSON(http.StatusOK, hdata)
+
 }
 
 func getDataKKT(c *gin.Context) {
@@ -107,17 +172,17 @@ func getDataKKT(c *gin.Context) {
 
 	kkm, err := KkmServ.GetDrv(deviceID)
 	if err != nil {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
 		return
 	}
 	//запрос состояния ккм
 	errcode, data, err := kkm.SendCommand(0x11, kkm.AdminPassword[:])
 	if err != nil {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": err.Error()})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	if errcode > 0 {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": kkm.ErrState(errcode)})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
 		return
 	}
 	res.KKTSerialNumber = string(data[22:26])
@@ -135,7 +200,7 @@ func getDataKKT(c *gin.Context) {
 	//итоги фискализации
 	errcode, data, err = kkm.SendCommand(0xFF09, kkm.AdminPassword[:])
 	if errcode > 0 {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": kkm.ErrState(errcode)})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
 		return
 	}
 	var mask byte
@@ -188,14 +253,14 @@ func getDataKKT(c *gin.Context) {
 	//запрос номера ФН
 	errcode, data, err = kkm.SendCommand(0xFF02, kkm.AdminPassword[:])
 	if errcode > 0 {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": kkm.ErrState(errcode)})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
 		return
 	}
 	res.FNSerialNumber = string(data)
 	//Запрос версии ФН
 	errcode, data, err = kkm.SendCommand(0xFF04, kkm.AdminPassword[:])
 	if errcode > 0 {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": kkm.ErrState(errcode)})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
 		return
 	}
 	//Строка версии программного обеспечения ФН:16 байт ASCII
@@ -250,7 +315,7 @@ func openShift(c *gin.Context) {
 
 	kkm, err := KkmServ.GetDrv(deviceID)
 	if err != nil {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
 		return
 	}
 	if err = c.ShouldBindXML(&inp); err != nil {
@@ -259,7 +324,7 @@ func openShift(c *gin.Context) {
 	}
 	err = kkmOpenShift(kkm)
 	if err != nil {
-		c.XML(http.StatusNotAcceptable, gin.H{"error": true, "message": err.Error()})
+		c.XML(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	//заполним выходные параметры по запросу
@@ -272,7 +337,7 @@ func getServSetting(c *gin.Context) {
 	//заполним Kkmserv из базы
 	err := KkmServ.ReadServ()
 	if err != nil {
-		c.JSON(http.StatusNotAcceptable, gin.H{"error": true, "message": err.Error()})
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	//прочитаем настройки сервера
@@ -281,12 +346,31 @@ func getServSetting(c *gin.Context) {
 		hdata[k] = v.GetStruct()
 	}
 	hdata["deviceids"] = kkms
+	hdata["error"] = false
+	c.JSON(http.StatusOK, hdata)
+}
+
+func getParamKKT(c *gin.Context) {
+	hdata := make(map[string]interface{})
+	deviceID := c.Param("DeviceID")
+	kkm, err := KkmServ.GetDrv(deviceID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
+		return
+	}
+	//заполним Kkmserv из базы
+	err = KkmServ.ReadDrvServ(deviceID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+		return
+	}
+	hdata[deviceID] = kkm.GetStruct()
 	c.JSON(http.StatusOK, hdata)
 }
 
 //setServSetting установка параметров сервера
 func setServSetting(c *gin.Context) {
-	hdata := make(map[string]interface{})
+	//hdata := make(map[string]interface{})
 	//заполним Kkmserv из базы
 	var jkkm drv.KkmDrvSer
 	if err := c.ShouldBindJSON(&jkkm); err != nil {
@@ -296,12 +380,13 @@ func setServSetting(c *gin.Context) {
 
 	err := KkmServ.SetServ(&jkkm)
 	if err != nil {
-		c.JSON(http.StatusNotAcceptable, gin.H{"error": true, "message": err.Error()})
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
-	hdata["device"] = jkkm
-
-	c.JSON(http.StatusOK, hdata)
+	getServSetting(c)
+	//hdata["device"] = jkkm
+	//hdata["error"] = false
+	//c.JSON(http.StatusOK, hdata)
 }
 
 //indexPage начальная страница приложения
@@ -316,6 +401,40 @@ func indexPage(c *gin.Context) {
 		http.StatusOK,
 		// Используем шаблон index.html
 		"index.html",
+		// Передадим данные в шаблон
+		hdata,
+	)
+}
+
+//editPage редактирование параметров ккм
+func editPage(c *gin.Context) {
+	hdata := make(map[string]interface{})
+	//заполним Kkmserv из базы
+
+	hdata["page"] = "edit"
+
+	c.HTML(
+		// Зададим HTTP статус 200 (OK)
+		http.StatusOK,
+		// Используем шаблон index.html
+		"edit.html",
+		// Передадим данные в шаблон
+		hdata,
+	)
+}
+
+//commandPage редактирование параметров ккм
+func commandPage(c *gin.Context) {
+	hdata := make(map[string]interface{})
+	//заполним Kkmserv из базы
+
+	hdata["page"] = "command"
+
+	c.HTML(
+		// Зададим HTTP статус 200 (OK)
+		http.StatusOK,
+		// Используем шаблон index.html
+		"command.html",
 		// Передадим данные в шаблон
 		hdata,
 	)
@@ -390,11 +509,14 @@ func main() {
 	router.LoadHTMLGlob("./tpl/*")
 	//начальная страница настройки
 	router.GET("/", indexPage)
+	router.GET("/edit", editPage)
+	router.GET("/command", commandPage)
 	api := router.Group("/api/")
 	{
 		api.GET("GetServSetting/", getServSetting)
 		api.PUT("SetServSetting/", setServSetting)
-		api.POST("run/:command", runCommand)
+		api.POST("run/:DeviceID/:command", runCommand)
+		api.GET("GetParamKKT/:DeviceID", getParamKKT)
 		api.POST("GetDataKKT/:DeviceID", getDataKKT)
 		//api.POST("OperationFN/", OperationFN)
 		api.POST("OpenShift/:DeviceID", openShift)
