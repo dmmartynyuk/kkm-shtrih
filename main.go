@@ -50,7 +50,7 @@ var BYTETIMEOUT int64 = 50 //milsec
 var PORTTIMEOUT int64 = 5000 //milsec, 5sec
 
 // itob returns an 8-byte little endian representation of v.
-func itob(v int) []byte {
+func itob(v int64) []byte {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, uint64(v))
 	return b
@@ -72,9 +72,6 @@ func runCommand(c *gin.Context) {
 	}
 	cmd := c.Param("command")
 	if cmd == "" {
-		cmd = c.Query("command")
-	}
-	if cmd == "" {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "нет комманды"})
 		return
 	}
@@ -89,7 +86,7 @@ func runCommand(c *gin.Context) {
 				c.JSON(http.StatusOK, gin.H{"error": true, "message": "параметры комманды не верны"})
 				return
 			}
-			res := itob((int)(vint))
+			res := itob(vint)
 			if i == 0 {
 				params = append(params, res[:4]...)
 			} else {
@@ -98,34 +95,55 @@ func runCommand(c *gin.Context) {
 		}
 
 	}
-	var icmd int64
-	if cmd[0] == byte('0') && cmd[1] == byte('x') {
-		icmd, err = strconv.ParseInt(cmd, 0, 10)
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"error": true, "message": "плохая комманда"})
+	/*
+		var icmd int64
+		if cmd[0] == byte('0') && cmd[1] == byte('x') {
+			icmd, err = strconv.ParseInt(cmd, 0, 10)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"error": true, "message": "плохая комманда"})
+				return
+			}
+			_, err = kkm.Connect()
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+				return
+			}
+			kkmerr, data, err := kkm.SendCommand((uint16)(icmd), params)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+				return
+			}
+			sdata := make([]string, len(data))
+			for i := 0; i < len(data); i++ {
+				sdata[i] = strconv.FormatUint(uint64(data[i]), 10)
+			}
+			hdata["deviceID"] = deviceID
+			hdata["kkmerr"] = kkmerr
+			hdata["retdata"] = sdata
+			hdata["error"] = false
+			hdata["message"] = "ok"
+			c.JSON(http.StatusOK, hdata)
 			return
 		}
-		kkmerr, data, err := kkm.SendCommand((uint16)(icmd), params)
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
-			return
-		}
-		hdata["deviceID"] = deviceID
-		hdata["kkmerr"] = kkmerr
-		hdata["kkmdata"] = data
-		hdata["error"] = false
-		hdata["message"] = "ok"
-		c.JSON(http.StatusOK, hdata)
-		return
-	}
-	kkmerr, data, err := kkmRunFunction(kkm, cmd, params)
+	*/
+	_, err = kkm.Connect()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
+	kkmerr, data, descr, err := kkmRunFunction(kkm, cmd, params)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+		return
+	}
+	sdata := make([]string, len(data))
+	for i := 0; i < len(data); i++ {
+		sdata[i] = strconv.FormatUint(uint64(data[i]), 10)
+	}
 	hdata["deviceID"] = deviceID
 	hdata["kkmerr"] = kkmerr
-	hdata["kkmdata"] = data
+	hdata["retdata"] = sdata
+	hdata["resdescr"] = descr
 	hdata["error"] = false
 	c.JSON(http.StatusOK, hdata)
 
@@ -460,8 +478,8 @@ func initDB() error {
 		err = b.Put([]byte("AdminPassword"), ADMINPASSWORD)
 		err = b.Put([]byte("DefaultPassword"), DEFAULTPASSWORD)
 		err = b.Put([]byte("DefaultPort"), []byte(DEFAULTPORT))
-		err = b.Put([]byte("DefaultBod"), itob(int(DEFAULTBOD)))
-		err = b.Put([]byte("MaxAttempt"), itob(int(MAXATTEMPT)))
+		err = b.Put([]byte("DefaultBod"), itob((DEFAULTBOD)))
+		err = b.Put([]byte("MaxAttempt"), itob(MAXATTEMPT))
 
 		b, err = tx.CreateBucket([]byte("Drivers"))
 		uuidWithHyphen := uuid.New()

@@ -743,7 +743,7 @@
 					<textarea
 					  class="block w-full mt-1 text-sm form-textarea focus:border-purple-400 focus:outline-none focus:shadow-outline-purple"
 					  rows="20"
-					  x-text="kkmdata"
+					  x-text="retdata"
 					></textarea>
 				  </label>
 				  
@@ -756,13 +756,10 @@
 						x-model="command"
 					>
 						<option value="" x-bind:selected="''==command">Выберите команду</option>
-						<option value="0x01" x-bind:selected="'0x01'==command">Запрос дампа</option>
-						<option value="0x02" x-bind:selected="'0x02'==command">Запрос данных</option>
 						<option value="0x03" x-bind:selected="'0x03'==command">Прерывание выдачи данных</option>
 						<option value="0x0F" x-bind:selected="'0x0F'==command">Запрос заводского номера и РНМ</option>
 						<option value="0x10" x-bind:selected="'0x10'==command">Короткий запрос состояния</option>
 						<option value="0x11" x-bind:selected="'0x11'==command">Запрос состояния ФР</option>
-						<option value="0x12" x-bind:selected="'0x12'==command">Печать жирной строки</option>
 						<option value="0x13" x-bind:selected="'0x13'==command">Гудок</option>
 						<option value="0x15" x-bind:selected="'0x15'==command">Чтение параметров обмена</option>
 						<option value="0x19" x-bind:selected="'0x19'==command">Тестовый прогон</option>

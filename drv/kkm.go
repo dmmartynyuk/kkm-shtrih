@@ -27,7 +27,7 @@ const ACK = 0x06
 const NAK = 0x15
 
 //MaxAttemp максимальное число попыток приема передачи одной команды
-const MaxAttemp = 4
+const MaxAttemp = 10
 
 //KkmDrv структура драйвера
 type KkmDrv struct {
@@ -253,6 +253,7 @@ func UnSerialize(jdata []byte) (*KkmDrv, error) {
 	binary.LittleEndian.PutUint32(b, uint32(toInt(dat["password"])))
 	copy(kkm.Password[:], b[0:4])
 	kkm.MaxAttemp = int64(toInt(dat["maxattempt"]))
+	kkm.TimeOut = int64(toInt(dat["timeout"]))
 	kkm.Connected = false
 	pcf, ok = dat["kkmparam"].(map[string]interface{})
 	if ok {
@@ -460,6 +461,8 @@ func (kkm *KkmDrv) ParseState(state []byte) (int, string) {
 	mode := int(state[0] >> 4) //старший полубайт status
 	if num == 8 || num == 13 || num == 14 {
 		mode = num*10 + mode
+	} else {
+		mode = num
 	}
 	kkmode := map[int]string{
 		0:   "Принтер в рабочем режиме.",
@@ -482,17 +485,147 @@ func (kkm *KkmDrv) ParseState(state []byte) (int, string) {
 		131: "Работа с фискальным подкладным документом: Покупка (открыт).",
 		132: "Работа с фискальным подкладным документом: Возврат продажи (открыт).",
 		133: "Работа с фискальным подкладным документом: Возврат покупки (открыт).",
-		140: "Печать подкладного документа. Ожидание загрузки.",
-		141: "Загрузка и позиционирование.",
-		142: "Позиционирование.",
-		143: "Печать.",
-		144: "Печать закончена.",
-		145: "Выброс документа.",
-		146: "Ожидание извлечения.",
+		140: "Печать подкладного документа: Ожидание загрузки.",
+		141: "Печать подкладного документа: Загрузка и позиционирование.",
+		142: "Печать подкладного документа: Позиционирование.",
+		143: "Печать подкладного документа: Печать.",
+		144: "Печать подкладного документа: Печать закончена.",
+		145: "Печать подкладного документа: Выброс документа.",
+		146: "Печать подкладного документа: Ожидание извлечения.",
 		15:  "Фискальный подкладной документ сформирован.",
 	}
 	kkm.State = KkmState{num, kkmode[mode]}
 	return num, kkmode[mode]
+}
+
+//ParseSubState подрежимы ккм
+func (kkm *KkmDrv) ParseSubState(state []byte) (int, string) {
+	// Подрежимы ККТ
+	// Подрежим ККТ – одно из состояний ККТ , в котором он может находиться.
+	// Номера и назначение подрежимов:
+	num := int(state[0])
+
+	kkmode := map[int]string{
+		0: `Бумага есть. ККТ не в фазе печати операции. может принимать от хоста команды, связанные с печатью на том документе, датчик которого сообщает о наличии бумаги.`,
+		1: `Пассивное отсутствие бумаги. ККТ не в фазе печати операции – 
+        не принимает от хоста команды, связанные с печатью на том 
+        документе, датчик которого сообщает об отсутствии бумаги.`,
+		2: `Активное отсутствие бумаги. ККТ в фазе печати операции – 
+        принимает только команды, не связанные с печатью. Переход из 
+        этого подрежима только в подрежим 3.`,
+		3: `После активного отсутствия бумаги – ККТ ждет команду 
+        продолжения печати. Кроме этого принимает команды, не 
+        связанные с печатью.`,
+		4: `Фаза печати операции полных фискальных отчетов – ККТ не 
+        принимает от хоста команды, связанные с печатью, кроме команды
+         прерывания печати.`,
+		5: `Фаза печати операции – ККТ не принимает от хоста команды, 
+        связанные с печатью.`,
+	}
+	return num, kkmode[num]
+}
+
+//ParseFlag Флаги ККТ
+func (kkm *KkmDrv) ParseFlag(state []byte) (int, string) {
+	flag := 0b0000000000000001
+	num := int(binary.LittleEndian.Uint16(state[0:2]))
+	ret := ""
+	kkmode := map[int]string{
+		0:  `Рулон операционного журнала`,
+		1:  `Рулон чековой ленты`,
+		2:  `Верхний датчик подкладного документа`,
+		3:  `Нижний датчик подкладного документа`,
+		4:  `Положение десятичной точки`,
+		5:  `ЭКЛЗ`,
+		6:  `Оптический датчик операционного журнала`,
+		7:  `Оптический датчик чековой ленты`,
+		8:  `Рычаг термоголовки операционного журнала опущен`,
+		9:  `Рычаг термоголовки чека опущен`,
+		10: `Крышка корпуса ФР поднята`,
+		11: `Денежный ящик открыт`,
+		12: `Крышка корпуса ККТ контрольной ленты поднята`,
+		13: `Отказ левого датчика принтера`,
+		14: `ЭКЛЗ почти заполнена`,
+		15: `Увеличенная точность количества`,
+	}
+	for i := 0; i < 16; i++ {
+		switch int(num) & flag {
+		case 0:
+			ret = ret + "\n" + kkmode[i] + " [нет] "
+		case flag:
+			ret = ret + "\n" + kkmode[i] + " [да ] "
+		}
+		flag = flag << 1
+	}
+
+	return num, ret
+}
+
+// ParseFlagFP Флаги ФП
+func (kkm *KkmDrv) ParseFlagFP(state []byte) (int, string) {
+	//Битовое поле (назначение бит):
+	num := int(state[0])
+	var ret string
+	switch state[0] & 0b00000001 {
+	case 0:
+		ret = "ФП 1 нет"
+	case 1:
+		ret = "ФП 1 есть"
+	}
+	switch state[0] & 0b00000010 {
+	case 0:
+		ret = ret + "\nФП 2 нет"
+	case 2:
+		ret = ret + "\nФП 2 есть"
+	}
+	switch state[0] & 0b00000100 {
+	case 0:
+		ret = ret + "\nЛицензия не введена"
+	case 4:
+		ret = ret + "\nЛицензия введена"
+	}
+	switch state[0] & 0b00001000 {
+	case 0:
+		ret = ret + "\nПереполнения ФП нет"
+	case 8:
+		ret = ret + "\nПереполнение ФП"
+	}
+	switch state[0] & 0b00010000 {
+	case 0:
+		ret = ret + "\nБатарея ФП >80%"
+	case 16:
+		ret = ret + "\nБатарея ФП <80%"
+	}
+	switch state[0] & 0b00100000 {
+	case 0:
+		ret = ret + "\nПоследняя запись ФП корректна"
+	case 32:
+		ret = ret + "\nПоследняя запись ФП испорчена"
+	}
+	switch state[0] & 0b01000000 {
+	case 0:
+		ret = ret + "\nСмена в ФП закрыта"
+	case 64:
+		ret = ret + "\nСмена в ФП открыта"
+	}
+	switch state[0] & 0b10000000 {
+	case 0:
+		ret = ret + "\n24 часа в ФП не кончились"
+	case 128:
+		ret = ret + "\n24 часа в ФП кончились"
+	}
+	/*
+		0: {0: "ФП 1 нет", 1: "ФП 1 есть"},
+		1: {0: "ФП 2 нет", 1: "ФП 2 есть"},
+		2: {0: "Лицензия не введена", 1: "Лицензия введена"},
+		3: {0: "Переполнения ФП нет", 1: "Есть переполнение ФП"},
+		4: {0: "Батарея ФП >80%", 1: "Батарея ФП <80%"},
+		5: {0: "Последняя запись ФП испорчена", 1: "Последняя запись ФП корректна"},
+		6: {0: "Смена в ФП закрыта", 1: "Смена в ФП открыта"},
+		7: {0: "24 часа в ФП не кончились", 1: "24 часа в ФП кончились"},
+	*/
+
+	return num, ret
 }
 
 //SetConfig Name: "COM45", Baud: 115200, ReadTimeout: time.Millisecond * 500
@@ -637,36 +770,44 @@ func (kkm *KkmDrv) SendCommand(cmdint uint16, params []byte) (errcode byte, data
 	//self.conn.write(STX+content+crc)
 	//self.conn.flush()
 	sending := append(content, crc)
-
-	log.Printf("port send %v\n", sending)
-	_, err = kkm.Write(sending)
-	if err != nil {
-		log.Printf("SendCommand, port.Write err: %v", err)
-		return 0, []byte{0}, err
-	}
-	answer, num, err := kkm.ReadAnswer()
-	if err != nil {
-		log.Printf("SendCommand, readAnswer err: %v", err)
-		return 0, answer, err
-		//kkm.SendENQ()
-	}
-	//answer[0]=cmd
-	//answer[1]=код ошибки
-
-	if cmdlen > 2 {
-		errcode = answer[2]
-		if num > 3 {
-			data = answer[3:num]
-		} else {
-			data = []byte{}
+	for i := int64(0); i < kkm.MaxAttemp; i++ {
+		var num int
+		var answer []byte
+		log.Printf("port send %v\n", sending)
+		_, err = kkm.Write(sending)
+		if err != nil {
+			log.Printf("SendCommand, port.Write err: %x", err)
+			return 0, []byte{0}, err
 		}
-	} else {
-		errcode = answer[1]
-		if num > 2 {
-			data = answer[2:num]
-		} else {
-			data = []byte{}
+		answer, num, err = kkm.ReadAnswer()
+		if err != nil {
+			log.Printf("SendCommand, readAnswer err: %x", err)
+			return 0, answer, err
+			//kkm.SendENQ()
 		}
+		//answer[0]=cmd
+		//answer[1]=код ошибки
+		if num > 0 && len(answer) > 1 {
+			if cmdlen > 2 && len(answer) > 2 {
+				errcode = answer[2]
+				if num > 3 {
+					data = answer[3:num]
+				} else {
+					data = []byte{}
+				}
+			} else {
+				errcode = answer[1]
+				if num > 2 {
+					data = answer[2:num]
+				} else {
+					data = []byte{}
+				}
+			}
+			return
+		}
+		//if answer[0]!=NAK {
+
+		//}
 	}
 	return
 
@@ -685,7 +826,12 @@ func (kkm *KkmDrv) Read(num int) ([]byte, int, error) {
 	}
 	return data[:n], n, nil
 	*/
-	buf := make([]byte, num)
+	var buf []byte
+	//if num < 2048 {
+	//	buf = make([]byte, num, 2048)
+	//} else {
+	buf = make([]byte, num)
+	//}
 	n, err := kkm.Port.Read(buf)
 	if err != nil {
 		if err != io.EOF {
@@ -785,51 +931,55 @@ func (kkm *KkmDrv) oneRoundRead() ([]byte, int, error) {
 //ClearAnswer Сбрасывает ответ если он болтается в ККМ
 func (kkm *KkmDrv) ClearAnswer() (int, error) {
 	log.Println("ClearAnswer")
-	kkm.Port.Flush()
-	kkm.SendENQ()
-	a, _, err := kkm.Read(1)
-	if err != nil {
-		return 0, err
-	}
-	switch a[0] {
-	case NAK:
-		return 1, nil
-	}
-	/*
-		for i:=0; i< MaxAttemp;i++{
-			kkm.SendENQ()
-			time.Sleep(time.Duration(kkm.TimeOut * int64(time.Millisecond) * 2))
-			a, _, err := kkm.Read(1)
-			if err != nil {
-				return 0, err
-			}
-			if a[0]== NAK{
-			return 1, nil
-			}
+	//var buf []byte
+	//kkm.Port.Flush()
+	for i := (int64)(0); i < 2; i++ {
+		a, _, err := kkm.Read(1)
+		if err != nil {
+			return 0, err
 		}
-	*/
+		switch a[0] {
+		case NAK:
+			return 1, nil
+		case STX, ACK:
+			_, _, err = kkm.ReadAnswer()
+			kkm.SendACK()
+		default:
+			kkm.SendNAK()
+			time.Sleep(time.Duration(kkm.TimeOut * int64(time.Millisecond)))
+			kkm.SendENQ()
+			_, _, err = kkm.ReadAnswer()
+			kkm.SendACK()
+		}
+	}
+	//мы тут, значит ккм не успевает прочитать наш аск
+	//надо уменьшить таймаут и постепенно его увеличивать, и да надо отправить коианду прерывания выдачи данных 03
+	kkm.TimeOut = 1
+	kkm.SendCommand(0x03, kkm.AdminPassword[:])
+	kkm.Port.Flush()
 
-	buf := make([]byte, 2048)
-	for i := 0; i < MaxAttemp; i++ {
+	for i := (int64)(0); i < kkm.MaxAttemp; i++ {
+		kkm.TimeOut = kkm.TimeOut + 5
 		kkm.SendENQ()
 		time.Sleep(time.Duration(kkm.TimeOut * int64(time.Millisecond) * 2))
-		n, err := kkm.Port.Read(buf)
+		a, _, err := kkm.Read(1)
 		if err != nil {
-			if err != io.EOF {
-				return 0, err
-			}
-			//EOF
-			if buf[0] == NAK {
-				return 1, nil
-			}
+			return 0, err
 		}
-		if n > 0 {
-			if buf[0] == NAK {
-				return 1, nil
-			}
+		switch a[0] {
+		case NAK:
+			return 1, nil
+		case STX, ACK:
+			_, _, err = kkm.ReadAnswer()
+			kkm.SendACK()
+		default:
+			kkm.SendNAK()
+			time.Sleep(time.Duration(kkm.TimeOut * int64(time.Millisecond) * 2))
+			kkm.SendENQ()
+			_, _, err = kkm.ReadAnswer()
+			kkm.SendACK()
 		}
 	}
-
 	return 0, nil
 }
 
@@ -849,6 +999,10 @@ func (kkm *KkmDrv) ReadAnswer() ([]byte, int, error) {
 		if ret > 0 {
 			return buf, ret, nil
 		}
+		if buf != nil && buf[0] == NAK {
+			// repit command
+			return buf, 0, nil
+		}
 		kkm.SendENQ() //приняли что то не понятное, запросим повтор ответа
 	}
 	return nil, 0, errors.New("Не получен правильный ответ в течении " + strconv.FormatInt((int64)(MaxAttemp), 10) + " попыток") //read answe error
@@ -859,17 +1013,21 @@ func (kkm *KkmDrv) Connect() (int, error) {
 	log.Println("Connecting...")
 	options := kkm.Opt
 	if kkm.Connected {
+		//todo: need close?
 		kkm.Close()
 		kkm.Connected = false
 	}
 	err := kkm.OpenPort(options)
 	if err != nil {
 		log.Printf("serial.Open: %v", err)
+		kkm.Connected = false
 		return 0, err
 		//panic("dont open port")
 	}
 	log.Println("port is opening")
-	for n := 0; n < MaxAttemp; n++ {
+	kkm.Port.Flush()
+	//kkm.SendENQ()
+	for n := (int64)(0); n < kkm.MaxAttemp; n++ {
 		ret, err := kkm.checkState() //=kkm.SendENQ() and read
 		if err != nil {
 			return 0, err
@@ -880,6 +1038,7 @@ func (kkm *KkmDrv) Connect() (int, error) {
 			log.Println("Wait command state")
 			return 1, nil
 		case ACK:
+			//wait stx
 			log.Println("KKM status ASK")
 			kkm.ClearAnswer()
 			kkm.Connected = true

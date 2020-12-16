@@ -15,7 +15,7 @@ function data() {
 	  tooltip:false,
 	  currentkkm:'',
 	  command:'',
-	  kkmdata:'',
+	  retdata:'',
 	  kkmerr:'',
 	  isError:false,
 	  errormsg:"",
@@ -90,7 +90,7 @@ function data() {
 				}
 			)
 			.then(response => response.json())
-			.then(data => {if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;}this.kkmdata=data.kkmdata;this.kkmerr=data.kkmerr;})
+			.then(data => {if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;}this.retdata=data.retdata+'\n'+data.resdescr;this.kkmerr=data.kkmerr;})
 			.catch(err => {this.showAlertMessage=true;this.errormsg=err;console.log(err);});
 		}
 		
