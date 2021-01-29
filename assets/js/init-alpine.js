@@ -12,6 +12,7 @@ function data() {
   return {
 	  showSuccessMessage:false,
 	  showAlertMessage:false,
+	  showSearchKKM:false,
 	  tooltip:false,
 	  currentkkm:'',
 	  command:'',
@@ -19,7 +20,68 @@ function data() {
 	  kkmerr:'',
 	  isError:false,
 	  errormsg:"",
+	  successmsg:"",
+	  servports: [], //[com1,com2...]
+	  bauds:[2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600],	
+	  fnddkkm: [], //"baud":,"port":,"device","err"
+	getServPorts: function() { //поиск портов сервера
+		this.showSearchKKM=true;
+		fetch("/api/getPorts",
+			{
+			  method: "GET", // POST, PUT, DELETE, etc.
+			  headers: {
+				"Content-Type": "application/json;charset=UTF-8"
+			  },
+			  cache: "no-store", // no-store, reload, no-cache, force-cache или only-if-cached
+			}
+		)
+		.then(response => response.json())
+		.then(data => {this.servports=data.ports;
+			if(data.ports.length==0){
+				if(data.os=='windows'){
+					for(let i=1; i<16;i++){this.servports.push("com"+i);}
+				}else{
+					for(let i=0; i<16;i++){this.servports.push("/dev/ttyS"+i);}
+					for(let i=0; i<16;i++){this.servports.push("/dev/ttyUSB"+i);}
+				}
+			}else{
+				let pname = new Set();
+				for(let i=0; i<data.ports.length;i++){
+					pname.add(data.ports[i].port);
+				}
+				this.servports=[...pname].sort();
+			}
+			this.showSearchKKM=false;
+		})
+		.catch(err => console.log(err));
+	},
+	searchKKM: function() { //поиск ккм сервера
+		this.showSearchKKM=true;
+		fetch("/api/SearchKKM",
+			{
+			  method: "GET",
+			  headers: {
+				"Content-Type": "application/json;charset=UTF-8"
+			  },
+			  cache: "no-store", // no-store, reload, no-cache, force-cache или only-if-cached
+			}
+		)
+		.then(response => response.json())
+		.then(data => {this.fnddkkm=data.devices;
+			if(this.fnddkkm.length>0){
+				this.showSuccessMessage=true;
+				let msg="";
+				for(let i=0;i<data.devices.length;i++){msg=msg+data.devices[i].device+". порт: "+data.devices[i].port+", baud: "+data.devices[i].baud+"<br />";}
+				this.successmsg=msg; //"baud":,"port":,"device","err"
+			}else{
+				this.errormsg="ККМ не найдены :-(";this.isError=true;this.showAlertMessage=true;
+			}
+			this.showSearchKKM=false;
+		})
+		.catch(err => {console.log(err);this.showSearchKKM=false;});
+	},
 	getServSettings: function() {
+		this.getServPorts();
 		fetch("/api/GetServSetting",
 			{
 			  method: "GET", // POST, PUT, DELETE, etc.
@@ -69,8 +131,8 @@ function data() {
 			}
 		)
 		.then(response => response.json())
-		.then(data => {if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;};this.showSuccessMessage=true;this.kkmsdata=data;this.kkmids=data.deviceids;if(data.deviceids.length>0)this.currentkkm=getcurKKMFromLocalStorage();})
-		.catch(err => {this.showAlertMessage=true;this.errormsg=err;console.log(err);});
+		.then(data => {if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;};this.successmsg="Все изменения записаны!";this.showSuccessMessage=true;this.kkmsdata=data;this.kkmids=data.deviceids;if(data.deviceids.length>0)this.currentkkm=getcurKKMFromLocalStorage();})
+		.catch(err => {this.showSearchKKM=false;this.showAlertMessage=true;this.errormsg=err;console.log(err);});
 	},
 	savecurkkm: function(id) {
 		setcurKKMToLocalStorage(id);
@@ -78,6 +140,7 @@ function data() {
 	runCommand: function(){
 		this.kkmdata='';this.kkmerr='';
 		if(this.command!='' && this.currentkkm!=''){
+			this.showSearchKKM=true;
 			fetch("/api/run/"+this.currentkkm+"/"+this.command+"?params[0]=30",
 				{
 				  method: "POST", // POST, PUT, DELETE, etc.
@@ -90,8 +153,8 @@ function data() {
 				}
 			)
 			.then(response => response.json())
-			.then(data => {if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;}this.retdata=data.retdata+'\n'+data.resdescr;this.kkmerr=data.kkmerr;})
-			.catch(err => {this.showAlertMessage=true;this.errormsg=err;console.log(err);});
+			.then(data => {this.showSearchKKM=false;if(data.error){this.errormsg=data.message;this.isError=true;this.showAlertMessage=true;return;}this.retdata=data.retdata+'\n'+data.resdescr;this.kkmerr=data.kkmerr;})
+			.catch(err => {this.showSearchKKM=false;this.showAlertMessage=true;this.errormsg=err;console.log(err);});
 		}
 		
 	},

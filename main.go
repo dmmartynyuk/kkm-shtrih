@@ -45,21 +45,24 @@ var CODEPAGE = "cp1251"
 var MAXATTEMPT int64 = 12
 
 //BYTETIMEOUT задержка для получения одного байта порта
-var BYTETIMEOUT int64 = 50 //milsec
+var BYTETIMEOUT int64 = 10 //milsec
 //PORTTIMEOUT задержка для ккм
 var PORTTIMEOUT int64 = 5000 //milsec, 5sec
 
-// itob returns an 8-byte little endian representation of v.
-func itob(v int64) []byte {
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, uint64(v))
-	return b
+//LENLINE длина строки по умолчанию
+var LENLINE uint8 = 32
+
+//DIGITS разрядность сумм
+var DIGITS int = 2
+
+func searchKKM(c *gin.Context) {
+	ret := drv.SearchKKM()
+	c.JSON(http.StatusOK, gin.H{"error": false, "devices": ret})
 }
 
-// btoi returns an 8-byte little endian representation of v.
-func btoi(v []byte) int64 {
-	b := binary.LittleEndian.Uint64(v)
-	return int64(b)
+func getPorts(c *gin.Context) {
+	ret, goos := drv.GetPortName()
+	c.JSON(http.StatusOK, gin.H{"error": false, "os": goos, "ports": ret})
 }
 
 func runCommand(c *gin.Context) {
@@ -70,11 +73,22 @@ func runCommand(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
 		return
 	}
+
 	cmd := c.Param("command")
 	if cmd == "" {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "нет комманды"})
 		return
 	}
+
+	if kkm.ChkBusy(0) {
+		c.XML(http.StatusOK, gin.H{"error": true, "message": "ККТ занята"})
+		return
+	}
+	//займем ккм
+	procid := int(time.Now().Unix())
+	kkm.SetBusy(procid)
+	//освободим по завершению
+	defer kkm.SetBusy(0)
 
 	strparams := c.QueryMap("params")
 	params := make([]byte, 0, 64)
@@ -95,42 +109,12 @@ func runCommand(c *gin.Context) {
 		}
 
 	}
-	/*
-		var icmd int64
-		if cmd[0] == byte('0') && cmd[1] == byte('x') {
-			icmd, err = strconv.ParseInt(cmd, 0, 10)
-			if err != nil {
-				c.JSON(http.StatusOK, gin.H{"error": true, "message": "плохая комманда"})
-				return
-			}
-			_, err = kkm.Connect()
-			if err != nil {
-				c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
-				return
-			}
-			kkmerr, data, err := kkm.SendCommand((uint16)(icmd), params)
-			if err != nil {
-				c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
-				return
-			}
-			sdata := make([]string, len(data))
-			for i := 0; i < len(data); i++ {
-				sdata[i] = strconv.FormatUint(uint64(data[i]), 10)
-			}
-			hdata["deviceID"] = deviceID
-			hdata["kkmerr"] = kkmerr
-			hdata["retdata"] = sdata
-			hdata["error"] = false
-			hdata["message"] = "ok"
-			c.JSON(http.StatusOK, hdata)
-			return
-		}
-	*/
 	_, err = kkm.Connect()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
+	defer kkm.Close()
 	kkmerr, data, descr, err := kkmRunFunction(kkm, cmd, params)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
@@ -151,217 +135,302 @@ func runCommand(c *gin.Context) {
 
 func getDataKKT(c *gin.Context) {
 	type TableParametersKKT struct {
-		KKTNumber       string `xml:"kktnumber" binding:"-"`              //Регистрационный номер ККТ
-		KKTSerialNumber string `xml:"kktserialnumber" binding:"required"` //Заводской номер ККТ
-		FirmwareVersion string `xml:"FirmwareVersion" binding:"-"`        //Версия прошивки
-		Fiscal          bool   `xml:"Fiscal" binding:"required"`          //Признак регистрации фискального накопителя
-		FFDVersionFN    string `xml:"FFDVersionFN" binding:"required"`    //Версия ФФД ФН (одно из следующих значений "1.0","1.1")
-		FFDVersionKKT   string `xml:"FFDVersionKKT" binding:"required"`   //Версия ФФД ККТ (одно из следующих значений "1.0","1.0.5","1.1")
-		FNSerialNumber  string `xml:"FNSerialNumber" binding:"required"`  //Заводской номер ФН
-		DocumentNumber  string `xml:"DocumentNumber" binding:"-"`         //Номер документа регистрация фискального накопителя
-		DateTime        string `xml:"DateTime" binding:"-"`               //Дата и время операции регистрации фискального накопителя
-		CompanyName     string `xml:"CompanyName" binding:"-"`            //Название организации
-		INN             string `xml:"INN" binding:"-"`                    //ИНН организация
-		SaleAddress     string `xml:"SaleAddress" binding:"-"`            //Адрес проведения расчетов
-		SaleLocation    string `xml:"SaleLocation" binding:"-"`           //Место проведения расчетов
-		TaxationSystems string `xml:"TaxationSystems" binding:"-"`        //Коды системы налогообложения через разделитель ",".
+		KKTNumber       string `xml:"kktnumber" json:"kktnumber" binding:"-"`                    //Регистрационный номер ККТ
+		KKTSerialNumber string `xml:"kktserialnumber" json:"kktserialnumber" binding:"required"` //Заводской номер ККТ
+		FirmwareVersion string `xml:"FirmwareVersion" json:"FirmwareVersion" binding:"-"`        //Версия прошивки
+		Fiscal          bool   `xml:"Fiscal" json:"Fiscal" binding:"required"`                   //Признак регистрации фискального накопителя
+		FFDVersionFN    string `xml:"FFDVersionFN" json:"FFDVersionFN" binding:"required"`       //Версия ФФД ФН (одно из следующих значений "1.0","1.1")
+		FFDVersionKKT   string `xml:"FFDVersionKKT" json:"FFDVersionKKT" binding:"required"`     //Версия ФФД ККТ (одно из следующих значений "1.0","1.0.5","1.1")
+		FNSerialNumber  string `xml:"FNSerialNumber" json:"FNSerialNumber" binding:"required"`   //Заводской номер ФН
+		DocumentNumber  string `xml:"DocumentNumber" json:"DocumentNumber" binding:"-"`          //Номер документа регистрация фискального накопителя
+		DateTime        string `xml:"DateTime" json:"DateTime" binding:"-"`                      //Дата и время операции регистрации фискального накопителя
+		CompanyName     string `xml:"CompanyName" json:"CompanyName" binding:"-"`                //Название организации
+		INN             string `xml:"INN" json:"INN" binding:"-"`                                //ИНН организация
+		SaleAddress     string `xml:"SaleAddress" json:"SaleAddress" binding:"-"`                //Адрес проведения расчетов
+		SaleLocation    string `xml:"SaleLocation" json:"SaleLocation" binding:"-"`              //Место проведения расчетов
+		TaxationSystems string `xml:"TaxationSystems" json:"TaxationSystems" binding:"-"`        //Коды системы налогообложения через разделитель ",".
 		//Коды системы налогообложения приведены в таблице "Системы налогообложения".
-		IsOffline   bool   `xml:"IsOffline" binding:"-"`   //Признак автономного режима
-		IsEncrypted bool   `xml:"IsEncrypted" binding:"-"` //Признак шифрование данных
-		IsService   bool   `xml:"IsService" binding:"-"`   //Признак расчетов за услуги
-		IsExcisable bool   `xml:"IsExcisable" binding:"-"` //Продажа подакцизного товара
-		IsGambling  bool   `xml:"IsGambling" binding:"-"`  //Признак проведения азартных игр
-		IsLottery   bool   `xml:"IsLottery" binding:"-"`   //Признак проведения лотереи
-		AgentTypes  string `xml:"AgentTypes" binding:"-"`  //Коды признаков агента через разделитель ",".
+		IsOffline   bool   `xml:"IsOffline" json:"IsOffline" binding:"-"`     //Признак автономного режима
+		IsEncrypted bool   `xml:"IsEncrypted" json:"IsEncrypted" binding:"-"` //Признак шифрование данных
+		IsService   bool   `xml:"IsService" json:"IsService" binding:"-"`     //Признак расчетов за услуги
+		IsExcisable bool   `xml:"IsExcisable" json:"IsExcisable" binding:"-"` //Продажа подакцизного товара
+		IsGambling  bool   `xml:"IsGambling" json:"IsGambling" binding:"-"`   //Признак проведения азартных игр
+		IsLottery   bool   `xml:"IsLottery" json:"IsLottery" binding:"-"`     //Признак проведения лотереи
+		AgentTypes  string `xml:"AgentTypes" json:"AgentTypes" binding:"-"`   //Коды признаков агента через разделитель ",".
 		//Коды приведены в таблице 10 форматов фискальных данных.
-		BSOSing            bool   `xml:"BSOSing" binding:"-"`            //Признак формирования АС БСО
-		IsOnlineOnly       bool   `xml:"IsOnlineOnly" binding:"-"`       //Признак ККТ для расчетов только в Интернет
-		IsAutomaticPrinter bool   `xml:"IsAutomaticPrinter" binding:"-"` //Признак установки принтера в автомате
-		IsAutomatic        bool   `xml:"IsAutomatic" binding:"-"`        //Признак автоматического режима
-		AutomaticNumber    string `xml:"AutomaticNumber" binding:"-"`    //Номер автомата для автоматического режима
-		OFDCompany         string `xml:"OFDCompany" binding:"-"`         //Название организации ОФД
-		OFDCompanyINN      string `xml:"OFDCompanyINN" binding:"-"`      //ИНН организации ОФД
-		FNSURL             string `xml:"FNSURL" binding:"-"`             //Адрес сайта уполномоченного органа (ФНС) в сети «Интернет»
-		SenderEmail        string `xml:"SenderEmail" binding:"-"`
+		BSOSing            bool   `xml:"BSOSing" json:"BSOSing" binding:"-"`                       //Признак формирования АС БСО
+		IsOnlineOnly       bool   `xml:"IsOnlineOnly" json:"IsOnlineOnly" binding:"-"`             //Признак ККТ для расчетов только в Интернет
+		IsAutomaticPrinter bool   `xml:"IsAutomaticPrinter" json:"IsAutomaticPrinter" binding:"-"` //Признак установки принтера в автомате
+		IsAutomatic        bool   `xml:"IsAutomatic" json:"IsAutomatic" binding:"-"`               //Признак автоматического режима
+		AutomaticNumber    string `xml:"AutomaticNumber" json:"AutomaticNumber" binding:"-"`       //Номер автомата для автоматического режима
+		OFDCompany         string `xml:"OFDCompany" json:"OFDCompany" binding:"-"`                 //Название организации ОФД
+		OFDCompanyINN      string `xml:"OFDCompanyINN" json:"OFDCompanyINN" binding:"-"`           //ИНН организации ОФД
+		FNSURL             string `xml:"FNSURL" json:"FNSURL" binding:"-"`                         //Адрес сайта уполномоченного органа (ФНС) в сети «Интернет»
+		SenderEmail        string `xml:"SenderEmail" json:"SenderEmail" binding:"-"`
+		ErrState           uint8  `xml:"errstate" json:"errstate" binding:"-"`
+		ErrMsg             string `xml:"errmessage" json:"errmessage" binding:"-"`
 	}
 	var res TableParametersKKT
+	res.ErrState = 0
+	res.ErrMsg = ""
 
 	deviceID := c.Param("DeviceID")
-
 	kkm, err := KkmServ.GetDrv(deviceID)
 	if err != nil {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
+		c.XML(http.StatusOK, gin.H{"errstate": 1, "errmessage": "deviceID не зарегистрирован"})
 		return
 	}
-	//запрос состояния ккм
-	errcode, data, err := kkm.SendCommand(0x11, kkm.AdminPassword[:])
-	if err != nil {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+	/*
+		procID := c.DefaultQuery("proc","0")
+		pid, err:= strconv.Atoi(procID)
+		if err !=nil {
+			pid=0
+		}*/
+	if kkm.ChkBusy(0) {
+		c.XML(http.StatusOK, gin.H{"errstate": 1, "errmessage": "ККТ занята"})
 		return
 	}
-	if errcode > 0 {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
-		return
-	}
-	res.KKTSerialNumber = string(data[22:26])
-	res.KKTNumber = kkm.Param.KKMNumber
-	res.FirmwareVersion = string(data[1:3])
-	res.FFDVersionKKT = string(data[3:5])
-	res.CompanyName = kkm.Param.Fname
-	res.INN = kkm.Param.Inn
-	//res.DateTime = string(data[6:9])
-	//res.DocumentNumber = string(data[10:12])
-	//res.DateTime = string(data[15:18])
-	if len(data) > 48 {
+	//займем ккм
+	procid := int(time.Now().Unix())
+	kkm.SetBusy(procid)
+	//освободим по завершению
+	defer kkm.SetBusy(0)
 
-	}
-	//итоги фискализации
-	errcode, data, err = kkm.SendCommand(0xFF09, kkm.AdminPassword[:])
-	if errcode > 0 {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
+	admpass := kkm.GetAdminPass()
+
+	errcode, err := kkm.FNGetStatus()
+	if err != nil {
+		c.XML(http.StatusOK, gin.H{"errstate": 1, "errmessage": err.Error()})
 		return
 	}
-	var mask byte
-	/*
-			Состояние фазы жизни: 1 байт
-		Бит 0 – проведена настройка ФН
-		Бит 1 – открыт фискальный режим
-		Бит 2 – закрыт фискальный режим
-		Бит 3 – закончена передача фискальных данных в ОФД
-	*/
-	res.Fiscal = (data[0]&0b0010) > 0 && ((data[0] & 0b0100) == 0)
-	res.DateTime = string(data[:5])
-	res.INN = string(data[5:17])
-	res.KKTNumber = string(data[17:38])
-	/*
-			0	Общая
-		1	Упрощенная (Доход)
-		2	Упрощенная (Доход минус Расход)
-		3	Единый налог на вмененный доход
-		4	Единый сельскохозяйственный налог
-		5	Патентная система налогообложения */
-	tax := ""
-	comma := ""
-	mask = 0b000001
-	for i := 0; i < 6; i++ {
-		if data[38]&mask > 0 {
-			tax = tax + comma + strconv.FormatInt(int64(i), 10)
-			comma = ","
-		}
-		mask = mask << 1
+
+	kkmParam := kkm.GetParam()
+
+	//запрос состояния ккм
+	errcode, data, err := kkm.SendCommand(0x11, admpass)
+	if err != nil {
+		c.XML(http.StatusOK, gin.H{"errstate": 1, "errmessage": err.Error()})
+		return
 	}
-	res.TaxationSystems = tax
-	/*
-			Бит 0 – Шифрование
+	if errcode > 0 {
+		c.XML(http.StatusOK, gin.H{"errstate": errcode, "errmessage": kkm.ParseErrState(errcode)})
+		return
+	}
+	kkm.SetState(data[13], data[14], binary.LittleEndian.Uint16(data[11:13]), data[29])
+
+	res.KKTSerialNumber = strconv.FormatUint(uint64(binary.LittleEndian.Uint32(data[30:34])), 10)
+
+	res.KKTNumber = kkmParam.KKMRegNumber
+	res.FirmwareVersion = string(data[1]) + "." + string(data[2]) //Версия ПО ККТ
+	res.FFDVersionKKT = string(data[16]) + "." + string(data[17]) // string Версия ФФД ККТ (одно из следующих значений "1.0","1.0.5","1.1")
+	res.CompanyName = kkmParam.Fname                              //  string Название организации
+	inn := make([]byte, 8)
+	copy(inn, data[40:46])
+	res.INN = strconv.FormatUint(uint64(binary.LittleEndian.Uint64(inn)), 10) // string ИНН организация
+
+	//запрос состояния FN
+	errcode, data, err = kkm.SendCommand(0xFF01, admpass)
+	if err != nil {
+		c.XML(http.StatusOK, gin.H{"errstate": 1, "errmessage": err.Error()})
+		return
+	}
+	if errcode > 0 {
+		res.Fiscal = false
+		res.ErrState = errcode
+		res.ErrMsg = kkm.ParseErrState(errcode)
+		//	c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
+		//	return
+	} else {
+		/*	Запрос статуса ФН
+			Код команды FF01h.
+			Ответ: Длина сообщения: 31 байт.
+			Состояние фазы жизни: 1 байт
+			Бит 0 – проведена настройка ФН
+			Бит 1 – открыт фискальный режим
+			Бит 2 – закрыт фискальный режим
+			Бит 3 – закончена передача фискальных данных в ОФД
+		*/
+		res.Fiscal = (data[0]&0b0010) > 0 && ((data[0] & 0b0100) == 0) // bool Признак регистрации фискального накопителя
+	}
+	//Запрос итогов последней фискализации (перерегистрации)
+	errcode, data, err = kkm.SendCommand(0xFF09, admpass)
+	if err != nil {
+		c.XML(http.StatusOK, gin.H{"errstate": 1, "errmessage": err.Error()})
+		return
+	}
+	if errcode > 0 {
+		if res.ErrState == 0 {
+			res.ErrMsg = kkm.ParseErrState(errcode)
+			res.ErrState = errcode
+		}
+		//c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
+		//return
+	} else {
+		/*Ответ для ФФД 1.0 и 1.5: FF09h Длина сообщения: 48(53) байт - 3байта (FF09h+err)
+		Дата и время: 5 байт DATE_TIME   (0:5)
+		ИНН : 12 байт ASCII		(5:17)
+		Регистрационный номер ККT: 20 байт ASCII  (17:27)
+		Код налогообложения: 1 байт  (27)
+		Бит 0 – ОСН
+		Бит 1 – УСН доход
+		Бит 2 – УСН доход минус расход
+		Бит 3 – ЕНВД
+		Бит 4 – ЕСП
+		Бит 5 – ПСН
+		Режим работы: 1 байт (28)
+		Бит 0 – Шифрование
 		Бит 1 – Автономный режим
 		Бит 2 – Автоматический режим
 		Бит 3 – Применение в сфере услуг
 		Бит 4 – Режим БСО
 		Бит 5 – Применение в Интернет
+		Номер ФД: 4 байта  (33:37)
+		Фискальный признак: 4 байта  (41:45)
+		Дата и время: 5 байт DATE_TIME  (45:50)
+
+		Ответ для ФФД 1.1:FF09h Длина сообщения: 65 байт-3 байта (FF09h+err)
+		Расширенные признаки работы ККТ: 1 байт (29:30)
+		ИНН ОФД: 12 байт ASCII  (30:42)
+		Код причины изменения сведений о ККТ:4 байта  (42:46)
+		Номер ФД: 4 байта  (46:50)
+		Фискальный признак: 4 байта (50:54)
+		*/
+		if len(data) < 52 {
+			res.FFDVersionFN = "1.0" //  string Версия ФФД ФН (одно из следующих значений "1.0","1.1")
+		} else {
+			res.FFDVersionFN = "1.1"
+		}
+		res.DocumentNumber = string(data[33:37]) // string Номер документа регистрация фискального накопителя
+
+		res.DateTime = strconv.FormatUint(uint64(data[0]), 10) + "." + strconv.FormatUint(uint64(data[1]), 10) + "." + strconv.FormatUint(uint64(data[2]), 10) + " " + strconv.FormatUint(uint64(data[3]), 10) + ":" + strconv.FormatUint(uint64(data[4]), 10) // string Дата и время операции регистрации фискального накопителя
+
+		tax := ""
+		comma := ""
+		for i := int64(0); i < 5; i++ {
+			mask := byte(1)
+			if (data[27] & mask) > 0 {
+				tax = tax + comma + strconv.FormatInt(i, 10)
+				comma = ","
+			}
+			mask = mask << 1
+		}
+		res.TaxationSystems = tax // string Коды системы налогообложения через разделитель ",".
+		//Коды системы налогообложения 0-Общая,1-Упрощенная (Доход),2-Упрощенная (Доход минус Расход),3-Енвд,4-Единый сельхоз налог,5-Патентная система налогообложения.
+		res.IsOffline = (data[28] & 0b0010) > 0   // bool  Признак автономного режима
+		res.IsEncrypted = (data[28] & 0b0001) > 0 // bool Признак шифрование данных
+		res.IsService = (data[28] & 0b001000) > 0 // bool  Признак расчетов за услуги
+
+		//Коды приведены в таблице 10 форматов фискальных данных.
+		res.BSOSing = (data[28] & 0b010000) > 0      //    bool   Признак формирования АС БСО
+		res.IsOnlineOnly = (data[28] & 0b100000) > 0 //   bool   Признак ККТ для расчетов только в Интернет
+		res.IsAutomatic = (data[28] & 0b0000100) > 0 //  bool   Признак автоматического режима
+	}
+	/*
+			Чтение таблицы
+		Команда: 1FH. Длина сообщения: 9 байт.
+		Пароль системного администратора (4 байта)
+		Таблица (1 байт)
+		Ряд (2 байта)
+		Поле (1 байт)
+		Ответ: 1FH. Длина сообщения: (2+X) байт.
+		Код ошибки (1 байт)
+		Значение (X байт) до 40 или до 2461
+		байт
 	*/
-	res.BSOSing = data[39]&0b0010000 > 0
-	res.IsOnlineOnly = data[39]&0b0100000 > 0
-	res.IsAutomatic = data[39]&0b0100 > 0
-	res.DocumentNumber = string(data[40:44])
-	if len(data) > 53 {
-		res.DocumentNumber = string(data[57:60])
-		//res.DateTime = string(data[60:])
-		res.OFDCompanyINN = string(data[41:53])
-	}
-	//запрос номера ФН
-	errcode, data, err = kkm.SendCommand(0xFF02, kkm.AdminPassword[:])
+	tabparam := make([]byte, 8)
+	copy(tabparam, admpass)
+	//binary.LittleEndian.PutUint16(b, uint16(18))
+	tabparam[4] = 18 //таблица 18 Fiscal storage
+	tabparam[5] = 0  //ряд
+	tabparam[6] = 1  //ряд
+	tabparam[7] = 21 //поле
+	errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
 	if errcode > 0 {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
-		return
+		if res.ErrState == 0 {
+			res.ErrMsg = kkm.ParseErrState(errcode)
+			res.ErrState = errcode
+		}
+		//c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
+		//return
+	} else {
+		res.IsExcisable = (data[0] & 0b0001) > 0        // bool Продажа подакцизного товара
+		res.IsGambling = (data[0] & 0b0010) > 0         // bool Признак проведения азартных игр
+		res.IsLottery = (data[0] & 0b0100) > 0          // bool Признак проведения лотереи
+		res.IsAutomaticPrinter = (data[0] & 0b1000) > 0 // bool  Признак установки принтера в автомате
+
+		tabparam[7] = 4 //Fs serial number
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.FNSerialNumber = string(decodeWindows1251(data)) // string Заводской номер ФН
+
+		tabparam[7] = 9 //поле address kkm 128 byte
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.SaleAddress = string(decodeWindows1251(data)) // string Адрес проведения расчетов
+		tabparam[7] = 18                                  //поле address 2 kkm 128 byte
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.SaleAddress = res.SaleAddress + string(decodeWindows1251(data))
+		tabparam[7] = 14 //поле место расчета kkm 128 byte
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.SaleLocation = string(decodeWindows1251(data)) // string Место проведения расчетов
+		tabparam[7] = 20                                   //поле место расчета 2 kkm 128 byte
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.SaleLocation = res.SaleLocation + string(decodeWindows1251(data))
+		tabparam[7] = 16 //поле признак агента
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		agent := ""
+		comma := ""
+		for i := int64(0); i < 7; i++ {
+			mask := byte(1)
+			if (data[0] & mask) > 0 {
+				agent = agent + comma + strconv.FormatInt(i, 10)
+				comma = ","
+			}
+			mask = mask << 1
+		}
+		res.AgentTypes = agent // string Коды признаков агента через разделитель ",".
+		//0-«БАНК. ПЛ. АГЕНТ»,1-«БАНК. ПЛ. СУБАГЕНТ»,2-ПЛ. АГЕНТ,3-ПЛ. СУБАГЕНТ,4-ПОВЕРЕННЫЙ,5-КОМИССИОНЕР,6-АГЕНТ
+
+		tabparam[7] = 12 //поле инн офд
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		copy(inn, data[:])
+		res.OFDCompanyINN = strconv.FormatUint(uint64(binary.LittleEndian.Uint64(inn)), 10) //  string ИНН организации ОФД
+
+		tabparam[7] = 10 //поле имя офд
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.OFDCompany = string(decodeWindows1251(data)) // string Название организации ОФД
+
+		tabparam[7] = 13 //поле email
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.FNSURL = string(decodeWindows1251(data)) //  string Адрес сайта уполномоченного органа (ФНС) в сети «Интернет»
+
+		tabparam[7] = 15 //поле email
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.SenderEmail = string(decodeWindows1251(data)) //  string
+
+		tabparam[7] = 15 //поле email
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.SenderEmail = string(decodeWindows1251(data))
+
+		//Таблица 24 Встраиваемая интернет техника
+		tabparam[4] = 24
+		tabparam[7] = 1 //поле Заводской номер автомата
+		errcode, data, err = kkm.SendCommand(0x1F, tabparam[:])
+		res.AutomaticNumber = string(decodeWindows1251(data)) //  string Номер автомата для автоматического режима
 	}
-	res.FNSerialNumber = string(data)
-	//Запрос версии ФН
-	errcode, data, err = kkm.SendCommand(0xFF04, kkm.AdminPassword[:])
-	if errcode > 0 {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": kkm.ErrState(errcode)})
-		return
-	}
-	//Строка версии программного обеспечения ФН:16 байт ASCII
-	//Тип программного обеспечения ФН: 1 байт
-	//0 – отладочная версия
-	//1 – серийная версия
-	res.FFDVersionFN = string(data[:16])
 	c.XML(http.StatusOK, res)
 	return
 }
 
-func openShift(c *gin.Context) {
-	type InputParameters struct {
-		CashierName  string `xml:"CashierName" binding:"required"` //ФИО и должность уполномоченного лица для проведения операции
-		CashierINN   string `xml:"CashierINN" binding:"-"`         //ИНН уполномоченного лица для проведения операции
-		SaleAddress  string `xml:"SaleAddress" binding:"-"`        //Адрес проведения расчетов
-		SaleLocation string `xml:"SaleLocation" binding:"-"`       //Место проведения расчетов
-	}
-	type OperationCounters struct {
-		CheckCount                  int     `xml:"CheckCount" binding:"required"`                  //Количество чеков по операции данного типа
-		TotalChecksAmount           float64 `xml:"TotalChecksAmount" binding:"required"`           //Итоговая сумма чеков по операциям данного типа
-		CorrectionCheckCount        int     `xml:"CorrectionCheckCount" binding:"required"`        //Количество чеков коррекции по операции данного типа
-		TotalCorrectionChecksAmount float64 `xml:"TotalCorrectionChecksAmount" binding:"required"` //Итоговая сумма чеков коррекции по операциям данного типа
-	}
-	type OutputParameters struct {
-		ShiftNumber             int    `xml:"ShiftNumber" binding:"required"`      //Номер открытой смены/Номер закрытой смены
-		CheckNumber             int    `xml:"CheckNumber" binding:"-"`             //Номер последнего фискального документа
-		ShiftClosingCheckNumber int    `xml:"ShiftClosingCheckNumber" binding:"-"` //Номер последнего чека за смену
-		DateTime                string `xml:"DateTime" binding:"required"`         //Дата и время формирования фискального документа
-		ShiftState              int    `xml:"ShiftState" binding:"required"`       //Состояние смены
-		//1 - Закрыта
-		//2 - Открыта
-		//3 - Истекла
-		CountersOperationType1 OperationCounters `xml:"CountersOperationType1" binding:"-"` //Счетчики операций по типу "приход"
-		//(код 1, Таблица 25 документа ФФД)
-		CountersOperationType2 OperationCounters `xml:"CountersOperationType2" binding:"-"` //Счетчики операций по типу "возврат прихода"
-		//(код 2, Таблица 25 документа ФФД)
-		CountersOperationType3 OperationCounters `xml:"CountersOperationType3" binding:"-"` //Счетчики операций по типу "расход"
-		//(код 3, Таблица 25 документа ФФД)
-		CountersOperationType4 OperationCounters `xml:"CountersOperationType4" binding:"-"` //Счетчики операций по типу "возврат расхода"
-		//(код 4, Таблица 25 документа ФФД)
-		CashBalance                  float64 `xml:"CashBalance" binding:"-"`                  //Остаток наличных денежных средств в кассе
-		BacklogDocumentsCounter      int     `xml:"BacklogDocumentsCounter" binding:"-"`      //Количество непереданных документов
-		BacklogDocumentFirstNumber   int     `xml:"BacklogDocumentFirstNumber" binding:"-"`   //Номер первого непереданного документа
-		BacklogDocumentFirstDateTime string  `xml:"BacklogDocumentFirstDateTime" binding:"-"` //Дата и время первого из непереданных документов
-		FNError                      bool    `xml:"FNError" binding:"required"`               //Признак необходимости срочной замены ФН
-		FNOverflow                   bool    `xml:"FNOverflow" binding:"required"`            //Признак переполнения памяти ФН
-		FNFail                       bool    `xml:"FNFail" binding:"required"`                //Признак исчерпания ресурса ФН
-	}
-	var inp InputParameters
-	deviceID := c.Param("DeviceID")
-
-	kkm, err := KkmServ.GetDrv(deviceID)
-	if err != nil {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
-		return
-	}
-	if err = c.ShouldBindXML(&inp); err != nil {
-		c.XML(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	err = kkmOpenShift(kkm)
-	if err != nil {
-		c.XML(http.StatusOK, gin.H{"error": true, "message": err.Error()})
-		return
-	}
-	//заполним выходные параметры по запросу
-
-}
-
 func getServSetting(c *gin.Context) {
 	hdata := make(map[string]interface{})
-	var kkms = make([]string, 0, 8)
-	//заполним Kkmserv из базы
-	err := KkmServ.ReadServ()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
-		return
-	}
 	//прочитаем настройки сервера
-	for k, v := range KkmServ.Drv {
-		kkms = append(kkms, k)
-		hdata[k] = v.GetStruct()
+	kkms := KkmServ.GetKeys()
+	for _, key := range kkms {
+		d, err := KkmServ.GetDrv(key)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
+			return
+		}
+		hdata[key] = d.GetStruct()
 	}
 	hdata["deviceids"] = kkms
 	hdata["error"] = false
@@ -374,12 +443,6 @@ func getParamKKT(c *gin.Context) {
 	kkm, err := KkmServ.GetDrv(deviceID)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
-		return
-	}
-	//заполним Kkmserv из базы
-	err = KkmServ.ReadDrvServ(deviceID)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	hdata[deviceID] = kkm.GetStruct()
@@ -467,8 +530,8 @@ func initDB() error {
 		}
 		//var kkm = drv.KkmDrv{}
 		/*
-			copy(kkm.AdminPassword[:], ADMINPASSWORD)
-			copy(kkm.Password[:], DEFAULTPASSWORD)
+			copy(admpass, ADMINPASSWORD)
+			copy(admpass, DEFAULTPASSWORD)
 			kkm.MaxAttemp = MAXATTEMPT
 			kkm.TimeOut = PORTTIMEOUT
 			kkm.Opt.Baud = int(DEFAULTBOD)
@@ -517,7 +580,7 @@ func main() {
 	}
 
 	//init KkmServ
-	err = KkmServ.ReadServ()
+	err = KkmServ.InitServ()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -531,27 +594,42 @@ func main() {
 	router.GET("/command", commandPage)
 	api := router.Group("/api/")
 	{
+		//service
+		api.GET("SearchKKM/", searchKKM)
+		api.GET("getPorts/", getPorts)
 		api.GET("GetServSetting/", getServSetting)
 		api.PUT("SetServSetting/", setServSetting)
 		api.POST("run/:DeviceID/:command", runCommand)
 		api.GET("GetParamKKT/:DeviceID", getParamKKT)
+
+		//функции для печати
+		api.PUT("SetBusy/:DeviceID", setBusy)
+		api.PUT("Release/:DeviceID", release)
+		api.POST("OpenCheck/:DeviceID", openCheck)
+		api.POST("FNOperation/:DeviceID", fnOperation)
+		api.POST("PrintString/:DeviceID", printString)
+		api.POST("CancelCheck/:DeviceID", cancelCheck)
+		api.POST("CloseCheck/:DeviceID", closeCheck)
+		api.POST("FNSendTagOperation/:DeviceID", fnSendTagOperation)
+		api.POST("FNSendTag/:DeviceID", fnSendTag)
+
+		//1c spec
 		api.POST("GetDataKKT/:DeviceID", getDataKKT)
-		//api.POST("OperationFN/", OperationFN)
+		//api.POST("OperationFN/:DeviceID", OperationFN) //Операция с фискальным накопителем.
 		api.POST("OpenShift/:DeviceID", openShift)
-		//api.POST("CloseShift/", CloseShift)
-		//api.POST("ProcessCheck/", ProcessCheck)
-		//api.POST("ProcessCorrectionCheck/", ProcessCorrectionCheck)
-		//api.POST("PrintTextDocument/", PrintTextDocument)
-		//api.POST("CashInOutcome/", CashInOutcome)
-		//api.POST("PrintXReport/", PrintXReport)
-		//api.POST("PrintCheckCopy/", PrintCheckCopy)
-		//api.POST("GetCurrentStatus/", GetCurrentStatus)
-		//api.POST("ReportCurrentStatusOfSettlements/", ReportCurrentStatusOfSettlements)
-		//api.POST("OpenCashDrawer/", OpenCashDrawer)
-		//api.POST("GetLineLength/", GetLineLength)
-		//api.POST("CashInOutcome/", CashInOutcome)
-		//api.DELETE("stores/", deleteStocks)
-		//api.DELETE("goods/:id", DeleteProduct)
+		api.POST("CloseShift/:DeviceID", CloseShift)
+		api.POST("ProcessCheck/:DeviceID", ProcessCheck)
+		//api.POST("ProcessCorrectionCheck/:DeviceID", ProcessCorrectionCheck)
+		//api.POST("PrintTextDocument/:DeviceID", PrintTextDocument)
+		//api.POST("CashInOutcome/:DeviceID", CashInOutcome)
+		//api.POST("PrintXReport/:DeviceID", PrintXReport)
+		//api.POST("PrintCheckCopy/:DeviceID", PrintCheckCopy)
+		//api.POST("GetCurrentStatus/:DeviceID", GetCurrentStatus)
+		//api.POST("ReportCurrentStatusOfSettlements/:DeviceID", ReportCurrentStatusOfSettlements)
+		api.POST("OpenCashDrawer/:DeviceID", OpenCashDrawer)
+		//api.POST("GetLineLength/:DeviceID", GetLineLength)
+		//api.POST("CashInOutcome/:DeviceID", CashInOutcome)
+
 	}
 	router.Run(portstr)
 }

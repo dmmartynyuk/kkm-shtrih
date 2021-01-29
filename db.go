@@ -33,6 +33,38 @@ func (k *Serv) GetConf(key string) (string, bool) {
 	return val, ok
 }
 
+//GetKeys получение ключей uid драйверов сервера
+func (k *Serv) GetKeys() []string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	s := make([]string, 32)
+	//читаем и сортируем
+	n := make(map[string]int)
+	for key := range k.Drv {
+		n[key] = 0
+		for ks, v := range n {
+			if ks > key {
+				n[ks] = v + 1
+				n[key] = n[key] - 1
+			}
+			if ks < key {
+				n[ks] = v - 1
+				n[key] = n[key] + 1
+			}
+		}
+	}
+	for ks, v := range n {
+		s[v+len(k.Drv)-1] = ks
+	}
+	ret := make([]string, 0, len(k.Drv))
+	for i := 0; i < len(s); i++ {
+		if s[i] != "" {
+			ret = append(ret, s[i])
+		}
+	}
+	return ret
+}
+
 //New установка нового драйвера
 func (k *Serv) New(key string) *drv.KkmDrv {
 	k.mu.Lock()
@@ -45,6 +77,7 @@ func (k *Serv) New(key string) *drv.KkmDrv {
 	d.DeviceID = key
 	d.Name = "новая kkm"
 	d.Connected = false
+	d.State.Busy = false
 	copy(d.AdminPassword[:], ADMINPASSWORD)
 	copy(d.Password[:], DEFAULTPASSWORD)
 	d.MaxAttemp = MAXATTEMPT
@@ -52,6 +85,7 @@ func (k *Serv) New(key string) *drv.KkmDrv {
 	d.Opt.Baud = int(DEFAULTBOD)
 	d.Opt.Name = DEFAULTPORT
 	d.Opt.ReadTimeout = time.Duration(BYTETIMEOUT) * time.Millisecond
+	d.Param.LenLine = LENLINE
 	k.Drv[key] = &d
 	return &d
 }
@@ -94,11 +128,14 @@ func (k *Serv) GetDrv(key string) (*drv.KkmDrv, error) {
 }
 
 //GetStatusDrv получение статуса драйвера занят/не занят
-func (k *Serv) GetStatusDrv(key string) (*drv.KkmDrv, bool) {
+func (k *Serv) GetStatusDrv(key string) (*drv.KkmDrv, bool, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	val, ok := k.Drv[key]
-	return val, ok
+	kkm, ok := k.Drv[key]
+	if !ok {
+		return nil, true, errors.New("DeviceId " + key + " не зарегистрирован")
+	}
+	return kkm, kkm.State.Busy, nil
 }
 
 //SetStatusDrv установка статуса занятости драйвера
@@ -109,12 +146,12 @@ func (k *Serv) SetStatusDrv(key string, status bool) error {
 	if !ok {
 		return errors.New("DeviceId " + key + " не зарегистрирован")
 	}
-	val.Busy = status
+	val.State.Busy = status
 	return nil
 }
 
-//ReadDrvServ читает настройки драйвера из базы
-func (k *Serv) ReadDrvServ(deviceid string) error {
+//InitDrvServ читает настройки драйвера из базы
+func (k *Serv) InitDrvServ(deviceid string) error {
 	k.Drv = make(map[string]*drv.KkmDrv)
 	//читаем параметры сервера
 	err := DB.View(func(tx *bolt.Tx) error {
@@ -125,6 +162,7 @@ func (k *Serv) ReadDrvServ(deviceid string) error {
 			if err != nil {
 				return err
 			}
+			kkm.State.Busy = false
 			k.Add(string(deviceid), kkm)
 			return nil
 		}
@@ -135,8 +173,8 @@ func (k *Serv) ReadDrvServ(deviceid string) error {
 
 }
 
-//ReadServ читает настройки сервера из базы
-func (k *Serv) ReadServ() error {
+//InitServ читает настройки сервера из базы
+func (k *Serv) InitServ() error {
 	k.Drv = make(map[string]*drv.KkmDrv)
 	k.Config = make(map[string]string)
 	//читаем параметры сервера
@@ -147,6 +185,7 @@ func (k *Serv) ReadServ() error {
 			if err != nil {
 				return err
 			}
+			kkm.State.Busy = false
 			k.Add(string(key), kkm)
 			return nil
 		})
@@ -171,7 +210,7 @@ func (k *Serv) ReadServ() error {
 	return nil
 }
 
-//SetServ устанавливает настройки сервера и пишет в базу
+//SetServ устанавливает настройки сервера и пишет в базу,
 func (k *Serv) SetServ(jkkm *drv.KkmDrvSer) error {
 	d, err := k.GetDrv(jkkm.DeviceID)
 	if err != nil {
