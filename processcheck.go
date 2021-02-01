@@ -12,7 +12,7 @@ import (
 )
 
 //ProcessCheck печать чека
-func ProcessCheck(c *gin.Context) {
+func processCheck(c *gin.Context) {
 	//продажа маркированного товара https://infostart.ru/1c/articles/1192569/
 	/*
 				<CheckPackage>

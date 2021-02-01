@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//CloseShift закрыть смену
-func closeShift(c *gin.Context) {
+//printXReport печать х-отчет
+func printXReport(c *gin.Context) {
 	/*<?xml version="1.0" encoding="UTF-8"?>
 	 <InputParameters>
 		<Parameters CashierName="Иванов И.П." CashierINN="32456234523452"/>
@@ -145,91 +145,46 @@ func closeShift(c *gin.Context) {
 	}
 
 	/*
-		Начать закрытие смены
-		Код команды FF42h . Длина сообщения: 6 байт.
-		Пароль системного администратора: 4 байта
-		Ответ: FF42h Длина сообщения: 1 байт.
-		Код ошибки: 1 байт
-		Закрыть смену в ФН
-		Код команды FF43h . Длина сообщения: 6 байт.
-		Пароль системного администратора: 4 байт
-		Ответ: FF43h Длина сообщения: 11 (16) байт1
+				Суточный отчет без гашения
+		Команда: 40H. Длина сообщения: 5 байт.
+		Пароль администратора или системного администратора или "СТАРШИЙ
+		КАССИР"1
+		(4 байта)
+		Ответ: 40H. Длина сообщения: 3 байта.
+		Код ошибки (1 байт)
+		Порядковый номер оператора (1 байт) 281
+		, 29, 30
 	*/
-	errcode, _, err = kkm.SendCommand(0xff42, admpass)
+	errcode, _, err = kkm.SendCommand(0x40, admpass)
 	if err != nil {
-		log.Printf("kkmCloseShift: %v", err)
+		log.Printf("xReport: %v", err)
 		c.XML(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if errcode > 0 {
-		//старая ккм, просто close смену
-		errcode, _, err := kkm.SendCommand(0x41, admpass)
-		if err != nil {
-			log.Printf("kkmCloseShift: %v", err)
-			c.XML(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		if errcode > 0 {
-			c.XML(http.StatusBadRequest, gin.H{"error": kkm.ParseErrState(errcode)})
-			return
-		}
-		//запросим параметры смены
-		state := kkm.GetState()
-		out.ShiftNumber = int(state.LastSession)
-		out.ShiftState = 1
-		kkm.SetState(1, state.SubState, state.Flag, state.FlagFP)
-	} else {
-		//отправим tlv с параметрами и close смену ФН
-		//тег 1203 ИНН Кассира
-		//Тег 1021 — кассир. В печатных документах — «КАССИР». Сюда должны вноситься «должность и фамилия лица, осуществившего расчет с покупателем
-		if len(inp.CashierINN) > 0 {
-			kkm.FNSendTLV(admpass, 1203, []byte(inp.CashierINN))
-		}
-		if len(inp.CashierName) > 0 {
-			kkm.FNSendTLV(admpass, 021, []byte(encodeWindows1251(inp.CashierName)))
-		}
-		if len(inp.SaleAddress) > 0 {
-			kkm.FNSendTLV(admpass, 1009, []byte(encodeWindows1251(inp.SaleAddress)))
-		}
-		if len(inp.SaleLocation) > 0 {
-			kkm.FNSendTLV(admpass, 1187, []byte(encodeWindows1251(inp.SaleLocation)))
-		}
-		//теперь close
-		/*Код ошибки: 1 байт
-		Номер только что закрытой смены: 2 байта
-		Номер ФД :4 байта
-		Фискальный признак: 4 байта
-		Дата и время: 5 байт DATE_TIME может отсутстыовать*/
-		errcode, data, err := kkm.SendCommand(0xff43, admpass)
-		if err != nil {
-			log.Printf("kkmCloseShift: %v", err)
-			c.XML(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		if errcode > 0 {
-			if errcode == 0x05 { // "Закончен срок эксплуатации ФН",
-				out.FNError = true
-			}
-			if errcode == 0x06 { //Архив ФН переполнен
-				out.FNOverflow = true
-			}
-			if errcode == 0x12 { // ФН Исчерпан ресурс КС(криптографического сопроцессора) Требуется закрытие фискального режима
-				out.FNError = true
-				out.FNFail = true
-			}
-			//c.XML(http.StatusBadRequest, gin.H{"error": kkm.ParseErrState(errcode)})
-			//return
-		}
-		//Номер новой открытой смены: 2 байта
-		out.ShiftNumber = int(btoi(data[:2]))
-		//Номер ФД :4 байта
-		out.CheckNumber = int(btoi(data[2:6]))
-		out.DateTime = time.Now().Format("2006-01-02 15:04:05")
-		if len(data) > 10 {
-			out.DateTime = time.Unix(btoi(data[11:16]), 0).Format("2006-01-02 15:04:05")
-		}
-		out.ShiftState = 1
+		c.XML(http.StatusBadRequest, gin.H{"error": kkm.ParseErrState(errcode)})
+		return
 	}
+	/*Запрос параметров текущей смены
+	Код команды FF40h . Длина сообщения: 6 байт.
+	Пароль системного администратора: 4 байта
+	Ответ: FF40h Длина сообщения: 6 байт.
+	Код ошибки: 1 байт
+	Состояние смены: 1 байт [0]
+	Номер смены : 2 байта  [1:3]
+	Номер чека: 2 байта	[3:]
+	*/
+	errcode, data, err := kkm.SendCommand(0xff40, admpass)
+	if errcode > 0 {
+		c.XML(http.StatusBadRequest, gin.H{"error": kkm.ParseErrState(errcode)})
+		return
+	}
+	out.ShiftNumber = int(btoi(data[1:3]))
+	//Номер ФД :4 байта
+	out.CheckNumber = int(btoi(data[3:5]))
+	out.DateTime = time.Now().Format("2006-01-02 15:04:05")
+	out.ShiftState = int(data[0])
+
 	/*Запрос денежного регистра
 	Команда: 1AH. Длина сообщения: 6 или 7 байт.
 	Пароль оператора (4 байта)
@@ -300,7 +255,7 @@ func closeShift(c *gin.Context) {
 		4224 – Сумма чеков коррекции прихода;
 		4225 – Сумма чеков коррекции расхода*/
 	tabparam[4] = 241
-	errcode, data, err := kkm.SendCommand(0x1a, tabparam[:7])
+	errcode, data, err = kkm.SendCommand(0x1a, tabparam[:7])
 	if err != nil {
 		//log.Printf("kkmCloseShift: %v", err)
 		c.XML(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -334,37 +289,6 @@ func closeShift(c *gin.Context) {
 	if errcode == 0 {
 		out.CountersOperationType3.TotalCorrectionChecksAmount = float64(btoi(data[1:]))
 	}
-	/*Получить статус информационного обмена
-	Код команды FF39h . Длина сообщения: 6 байт.
-	Пароль системного администратора: 4 байта
-	Ответ: FF39h Длина сообщения: 14 байт.
-	Код ошибки: 1 байт
-	Статус информационного обмена: 1 байт (0 – нет, 1 – да) [0]
-	Бит 0 – транспортное соединение установлено
-	Бит 1 – есть сообщение для передачи в ОФД
-	Бит 2 – ожидание ответного сообщения (квитанции) от ОФД
-	Бит 3 – есть команда от ОФД
-	Бит 4 – изменились настройки соединения с ОФД
-	Бит 5 – ожидание ответа на команду от ОФД
-	Состояние чтения сообщения: 1 байт (1 – да, 0 –нет)	[1]
-	Количество сообщений для ОФД: 2 байта	[2:4]
-	Номер документа для ОФД первого в очереди: 4 байта [4:8]
-	Дата и время документа для ОФД первого в очереди: 5 бай [8:13]
-	*/
-	errcode, _, err = kkm.SendCommand(0xff39, admpass)
-	if errcode > 0 {
-		c.XML(http.StatusBadRequest, gin.H{"error": kkm.ParseErrState(errcode)})
-		return
-	}
-	/*Количество непереданных документов
-	BacklogDocumentsCounter int `xml:"BacklogDocumentsCounter,attr" binding:"-"`
-	//Номер первого непереданного документа
-	BacklogDocumentFirstNumber int `xml:"BacklogDocumentFirstNumber,attr" binding:"-"`
-	//Дата и время первого из непереданных документов
-	BacklogDocumentFirstDateTime string `xml:"BacklogDocumentFirstDateTime,attr" binding:"-"`*/
-	out.BacklogDocumentsCounter = int(btoi(data[2:4]))
-	out.BacklogDocumentFirstNumber = int(btoi(data[4:8]))
-	out.BacklogDocumentFirstDateTime = time.Unix(btoi(data[8:13]), 0).Format("2006-01-02 15:04:05")
 
 	c.XML(http.StatusBadRequest, out)
 }

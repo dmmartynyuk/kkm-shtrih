@@ -73,7 +73,46 @@ type KkmParam struct {
 	RNM             string `json:"rnm"` //РНМ
 	//длина строки чека
 	LenLine uint8 `json:"lenline"`
+	//BarCode height
+	BarCodeH uint8 `json:"barcodeh"`
+	//BarCode width
+	BarCodeW uint8 `json:"barcodew"`
+	//BarCodeAlign положение 2-лево, 0-центр, 3- право
+	BarCodeAlign uint8 `json:"barcodealign"`
+	//PDF417 Number column
+	PDF417NumCol   uint8 `json:"pdf417numcol"`
+	PDF417NumRow   uint8 `json:"pdf417numrow"`
+	PDF417W        uint8 `json:"pdf417w"`
+	PDF417H        uint8 `json:"pdf417h"`
+	PDF417ErrLevel uint8 `json:"pdf417errlevel"`
+	//DATAMATRIX param
+	DMATRScheme   uint8 `json:"datamatrixscheme"`
+	DMATRRotate   uint8 `json:"datamatrixrotate"`
+	DMATRDotSize  uint8 `json:"datamatrixdotsize"`
+	DMATRSymbSize uint8 `json:"datamatrixsymbsize"`
+	//AZTEC param
+	AZTECScheme   uint8 `json:"aztecscheme"`
+	AZTECDotSize  uint8 `json:"aztecdotsize"`
+	AZTECSymbSize uint8 `json:"aztecsymbsize"`
+	AZTECErrLevel uint8 `json:"aztecerrlevel"`
+	//QR
+	QRVersion uint8 `json:"qrversion"`
+	QRMask    uint8 `json:"qrmask"`
+	//QRDotSize по умолчанию = 8
+	QRDotSize uint8 `json:"qrdotsize"`
+	//QRErrLevel коррекция ошибок по умолчанию =0
+	QRErrLevel uint8 `json:"qrerrlevel"`
 }
+
+/*
+Значения BarcodeParameter1..BarcodeParameter5 в зависимости от типа ШК: (Значения параметров согласно документации на притнер VKP80)
+	  PDF 417                 |DATAMATRIX      |AZTEC                    |QR Code
+	1 Number of columns       |Encoding scheme |Encoding scheme          |Version, 0=auto
+	2 Number of rows          |Rotate          |-                        |Mask, 0=auto
+	3 Width of module         |Dot size        |Dot size                 |Dot size, 3-8
+	4 Module height           |Symbol size     |Symbol size              |-
+	5 Error correction level  |-               |Error correction level   |Error correction level, 0-3
+*/
 
 //PortConf копия конфигурации порта для сериализации
 type PortConf struct {
@@ -279,7 +318,7 @@ func SearchKKM() []OsPort {
 	k.MaxAttemp = 3
 	k.Connected = false
 	k.TimeOut = 8
-	k.TimeOut = 2000
+	//k.TimeOut = 2000
 	portconf, _ := GetPortName()
 	founded := make(map[string]bool)
 	//для начала переберем порты на скорости 115200
@@ -331,6 +370,22 @@ func SearchKKM() []OsPort {
 	return retok
 }
 
+//CutCheck отрезать
+func (kkm *KkmDrv) CutCheck(pass []byte, tip uint8) (byte, error) {
+	/*Отрезка чека
+	  Команда: 25H. Длина сообщения: 6 байт.
+	  Пароль оператора (4 байта)
+	  Тип отрезки (1 байт) «0» – полная, «1» – неполная
+	  Ответ: 25H. Длина сообщения: 3 байта.
+	  Код ошибки (1 байт)
+	  Порядковый номер оператора (1 байт) 1…30*/
+	tabparam := make([]byte, 5)
+	copy(tabparam, pass[:4])
+	tabparam[4] = tip
+	errcode, _, err := kkm.SendCommand(0x25, tabparam)
+	return errcode, err
+}
+
 //PrintString печатает строку чека
 func (kkm *KkmDrv) PrintString(pass []byte, str string) (byte, error) {
 	//Пароль оператора (4 байта)
@@ -341,6 +396,233 @@ func (kkm *KkmDrv) PrintString(pass []byte, str string) (byte, error) {
 	tabparam[4] = 1 //контрольная лента
 	copy(tabparam[5:], encodeWindows1251(string(str)))
 	errcode, _, err := kkm.SendCommand(0x17, tabparam)
+	return errcode, err
+}
+
+//Print2dCode печать двухмерного кода
+func (kkm *KkmDrv) Print2dCode(pass []byte, bartype string, barcode []byte) (byte, error) {
+	/*часть 1 :Загрузка данных
+	Команда: DDH. Длина сообщения: 71 байт.
+	 Пароль (4 байта)  [:4]
+	 Тип данных (1 байт) 0 – данные для двумерного штрих-кода [4]
+	 Порядковый номер блока данных (1 байт) 0...127 [5]
+	 Данные (64 байта)	[6:70]
+	Ответ: DDH. Длина сообщения: 3 байта.
+	 Код ошибки (1 байт)
+	 Порядковый номер оператора (1 байт) 1…30
+
+	 Часть 2
+	Печать многомерного штрих-кода
+	Команда: DEH. Длина сообщения: 15 байт.
+	 Пароль (4 байта) [:4]
+	 Тип штрих-кода (1 байт) [4]
+	 Длина данных штрих-кода (2 байта) 1...70891 [5:7]
+	 Номер начального блока данных (1 байт) 0...127 [7]
+	 Параметр 1 (1 байт)	[8]
+	 Параметр 2 (1 байт)	[9]
+	 Параметр 3 (1 байт)	[10]
+	 Параметр 4 (1 байт)	[11]
+	 Параметр 5 (1 байт)	[12]
+	 Выравнивание (1 байт)	[13]
+	Ответ: DEH. Длина сообщения: 3 байт или 122
+	байт.
+	 Код ошибки (1 байт)
+	 Порядковый номер оператора (1 байт) 1…30
+	 Параметр 1 (1 байт) 2
+	 Параметр 2 (1 байт) 2
+	 Параметр 3 (1 байт) 2
+	 Параметр 4 (1 байт) 2
+	 Параметр 5 (1 байт) 2
+	 Размер штрих-кода (горизонтальный) в точках (2 байта) 2
+	 Размер штрих-кода (вертикальный) в точках (2 байта) 2
+	Тип штрих-кода
+	0 PDF 417
+	1 DATAMATRIX
+	2 AZTEC
+	3 QR code
+	*/
+	/* Сначала нужно загрузить данные блоками
+	  Driver.BlockType := 0;
+	  Driver.BlockNumber := 0; // Номер блока данных
+	  Driver.BlockDataHex := 'FFFFFF'; // Размер одного блока данных до 64 байт
+	  Driver.LoadBlockData;
+	  данные кодируются в строку HEX, например так
+	  For i = 1 To Len(strText)
+		strTmp = Hex$(Asc(Mid$(strText, i, 1)))
+		strOut = strOut & IIf(Len(strTmp) = 1, "0" & strTmp, strTmp)
+		Next i
+	TextToHex = Trim$(strOut)
+
+	  // Печать
+	  Driver.BarcodeType := 0; {0 - PDF417; 1 - DataMatrix;  2 - AZTEC; 3 - QR CODE}
+	  Driver.BarcodeDataLength := // Длина данных в байтах BarcodeDataLength = barcodeHex.Length / 2;
+			Т.к. 1 байт в HEX формате занимает 2 байта
+	  Driver.BarcodeStartBlockNumber := 0// Номер первого блока данных
+	  Driver.BarcodeParameter1 := // Параметр 1 см. таблицу
+	  Driver.BarcodeParameter2 := // Параметр 2
+	  Driver.BarcodeParameter3 := // Параметр 3
+	  Driver.BarcodeParameter4 := // Параметр 4
+	  Driver.BarcodeParameter5 := // Параметр 5
+	  Driver.BarcodeAlignment := // Выравнивание: 0 - центр; 2- по левому краю; 3 - по правому краю
+	  Driver.Print2DBarcode;
+
+	Значения BarcodeParameter1..BarcodeParameter5 в зависимости от типа ШК: (Значения параметров согласно документации на притнер VKP80)
+	  PDF 417                 |DATAMATRIX      |AZTEC                    |QR Code
+	1 Number of columns       |Encoding scheme |Encoding scheme          |Version, 0=auto
+	2 Number of rows          |Rotate          |-                        |Mask, 0=auto
+	3 Width of module         |Dot size        |Dot size                 |Dot size, 3-8
+	4 Module height           |Symbol size     |Symbol size              |-
+	5 Error correction level  |-               |Error correction level   |Error correction level, 0-3*/
+
+	//загрузка блоков данных по 128 байт
+	var blocksize = 64
+	tabparam := make([]byte, 70)
+	copy(tabparam, pass[:4])
+	tabparam[4] = 0 //2d code
+
+	for i := int(0); i < int(len(barcode)/blocksize)+1; i++ {
+		tabparam[5] = uint8(i)
+		ml := i*blocksize + blocksize
+		if ml > len(barcode) {
+			ml = len(barcode)
+		}
+		coping := copy(tabparam[6:], barcode[i*blocksize:ml])
+		if coping < blocksize {
+			for z := 6 + coping; z < 6+blocksize; z++ {
+				tabparam[z] = 0
+			}
+		}
+		kkm.SendCommand(0xDD, tabparam)
+	}
+	barparam := kkm.GetParam()
+	copy(tabparam[5:7], itob(int64(len(barcode)))) //длина кода в байтах
+	tabparam[7] = 0
+	tabparam[13] = barparam.BarCodeAlign
+	switch bartype {
+	case "PDF417":
+		tabparam[4] = 0
+		tabparam[8] = barparam.PDF417NumCol
+		tabparam[9] = barparam.PDF417NumRow
+		tabparam[10] = barparam.PDF417W
+		tabparam[11] = barparam.PDF417H
+		tabparam[12] = barparam.PDF417ErrLevel
+	case "DataMatrix", "DATAMATRIX":
+		tabparam[4] = 1
+		tabparam[8] = barparam.DMATRScheme
+		tabparam[9] = barparam.DMATRRotate
+		tabparam[10] = barparam.DMATRDotSize
+		tabparam[11] = barparam.DMATRSymbSize
+		tabparam[12] = 0
+	case "AZTEC":
+		tabparam[4] = 2
+		tabparam[8] = barparam.AZTECScheme
+		tabparam[9] = 0
+		tabparam[10] = barparam.AZTECDotSize
+		tabparam[11] = barparam.AZTECSymbSize
+		tabparam[12] = barparam.AZTECErrLevel
+	case "QR":
+		tabparam[4] = 3
+		tabparam[8] = barparam.QRVersion
+		tabparam[9] = barparam.QRMask
+		tabparam[10] = barparam.QRDotSize
+		tabparam[11] = 0
+		tabparam[12] = barparam.QRErrLevel
+	}
+	errcode, _, err := kkm.SendCommand(0xDE, tabparam[:14])
+	return errcode, err
+}
+
+//PrintBarCode Печать штрих-кода средствами принтера
+func (kkm *KkmDrv) PrintBarCode(pass []byte, bartype string, barcode []byte) (byte, error) {
+	/*
+		bartype = "EAN8","EAN13", "EAN128", "CODE39", "Code128","Code16k","Code93","PDF417","DataMatrix" ,"QR", "ITF14","EAN13Addon2","EAN13Addon5","GS1DataBarExpandedStacked"
+		barcode =
+				Команда: CBH. Длина сообщения: 57 байт или менее.
+				Пароль оператора (4 байта) 					[:4]
+				Высота штрих-кода (1 байт) 1…255 			[4]
+				Ширина штриха (1 байт)						[5]
+				Позиция HRI (1 байт):						[6]
+				«0» – Not printed;
+				«1» – Above the bar code;
+				«2» – Below the bar code;
+				«3» – Both above and below the bar code;
+				Шрифт HRI (1 байт):							[7]
+				«0» – Standard Pitch at 15.2 CPI on receipt;
+				«1» – Compressed Pitch at 19 CPI on receipt;
+				Тип штрих-кода (1 байт):					[8]
+				«0» – UPC-A;
+				«1» – UPC-E;
+				«2» – EAN13 (JAN-13);
+				«3» – EAN8 (JAN-8);
+				«4» – CODE39;
+				«5» – ITF;
+				«6» – CODABAR (NW-7);
+				«7» – CODE93;
+				«8» – CODE128;
+				«10» – PDF417;
+				«11» – GS1 DataBar Omnidirectional;
+				«12» – GS1 DataBar Truncated;
+				«13» – GS1 DataBar Limited;
+				«14» – GS1 DataBar Expanded;
+				«15» – GS1 DataBar Stacked;
+				«16» – GS1 DataBar Stacked Omnidirectional;
+				«17» – GS1 DataBar Expanded Stacked;
+				Данные штрих-кода (1…48 байт)				[9:57]
+				Ответ: CBH. Длина сообщения: 3 байта
+				Код ошибки (1 байт)
+				Порядковый номер оператора (1 байт) 1…30
+	*/
+	/*Печать штрих-кода EAN-13
+	Команда: C2H. Длина сообщения: 10 байт.
+	Пароль оператора (4 байта)
+	Штрих-код (5 байт) 000000000000…999999999999
+	Ответ: С2H. Длина сообщения: 3 байта.
+	Код ошибки (1 байт)
+	Порядковый номер оператора (1 байт) 1…30*/
+	parambc := kkm.GetParam()
+
+	if bartype == "EAN13" {
+		tabparam := make([]byte, 10)
+		copy(tabparam, pass[:4])
+		copy(tabparam[4:], encodeWindows1251(string(barcode)))
+		errcode, _, err := kkm.SendCommand(0xc2, tabparam)
+		return errcode, err
+	}
+	tabparam := make([]byte, 57)
+	copy(tabparam, pass[:4])
+	tabparam[4] = parambc.BarCodeH
+	tabparam[5] = parambc.BarCodeW
+	tabparam[6] = 2
+	switch bartype {
+	case "EAN8":
+		tabparam[8] = 3
+	case "EAN128":
+		return 1, errors.New("Не поддерживаемый тип штрихкода")
+	case "CODE39":
+		tabparam[8] = 4
+	case "Code128":
+		tabparam[8] = 8
+	case "Code16k":
+		return 1, errors.New("Не поддерживаемый тип штрихкода")
+	case "Code93":
+		tabparam[8] = 7
+	case "PDF417":
+		return kkm.Print2dCode(pass, bartype, barcode)
+	case "DataMatrix":
+		return kkm.Print2dCode(pass, bartype, barcode)
+	case "QR":
+		return kkm.Print2dCode(pass, bartype, barcode)
+	case "ITF14":
+		tabparam[8] = 5
+	case "EAN13Addon2":
+		return 1, errors.New("Не поддерживаемый тип штрихкода")
+	case "EAN13Addon5":
+		return 1, errors.New("Не поддерживаемый тип штрихкода")
+	case "GS1DataBarExpandedStacked":
+		tabparam[8] = 17
+	}
+	copy(tabparam[9:], encodeWindows1251(string(barcode)))
+	errcode, _, err := kkm.SendCommand(0xcb, tabparam)
 	return errcode, err
 }
 
@@ -989,6 +1271,54 @@ func UnSerialize(jdata []byte) (*KkmDrv, error) {
 		rnm, ok1 := pcf["rnm"]
 		if ok1 {
 			kkm.Param.RNM = rnm.(string)
+		}
+		/*
+
+			PDF417NumCol   uint8 `json:"pdf417numcol"`
+			PDF417NumRow   uint8 `json:"pdf417numrow"`
+			PDF417W        uint8 `json:"pdf417w"`
+			PDF417H        uint8 `json:"pdf417h"`
+			PDF417ErrLevel uint8 `json:"pdf417errlevel"`
+			//DATAMATRIX param
+			DMATRScheme   uint8 `json:"datamatrixscheme"`
+			DMATRRotate   uint8 `json:"datamatrixrotate"`
+			DMATRDotSize  uint8 `json:"datamatrixdotsize"`
+			DMATRSymbSize uint8 `json:"datamatrixsymbsize"`
+			//AZTEC param
+			AZTECScheme   uint8 `json:"aztecscheme"`
+			AZTECDotSize  uint8 `json:"aztecdotsize"`
+			AZTECSymbSize uint8 `json:"aztecsymbsize"`
+			AZTECErrLevel uint8 `json:"aztecerrlevel"`
+			//QR
+			QRVersion uint8 `json:"qrversion"`
+			QRMask    uint8 `json:"qrmask"`
+			//QRDotSize по умолчанию = 8
+			QRDotSize uint8 `json:"qrdotsize"`
+			//QRErrLevel коррекция ошибок по умолчанию =0
+			QRErrLevel uint8 `json:"qrerrlevel"`*/
+		rnm, ok1 = pcf["kkmregnum"]
+		if ok1 {
+			kkm.Param.KKMRegNumber = rnm.(string)
+		}
+		uint8val, ok1 := pcf["lenline"]
+		if ok1 {
+			kkm.Param.LenLine = uint8val.(uint8)
+		}
+		uint8val, ok1 = pcf["barcodeh"]
+		if ok1 {
+			kkm.Param.BarCodeH = uint8val.(uint8)
+		}
+		uint8val, ok1 = pcf["barcodew"]
+		if ok1 {
+			kkm.Param.BarCodeW = uint8val.(uint8)
+		}
+		uint8val, ok1 = pcf["barcodealign"]
+		if ok1 {
+			kkm.Param.BarCodeAlign = uint8val.(uint8)
+		}
+		uint8val, ok1 = pcf["pdf417numcol"]
+		if ok1 {
+			kkm.Param.PDF417NumCol = uint8val.(uint8)
 		}
 	}
 	return &kkm, nil

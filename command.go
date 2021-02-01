@@ -69,12 +69,12 @@ func q2byte(q float64) []byte {
 func getIntParam(c *gin.Context, param string, defaultval int) (int, error) {
 	p, ok := c.GetQuery(param)
 	if !ok {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " не указан"})
+		//c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " не указан"})
 		return defaultval, errors.New(param + " не указан")
 	}
 	ret, err := strconv.Atoi(p)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " должен быть числом"})
+		//c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " должен быть числом"})
 		return defaultval, errors.New(param + " должен быть числом")
 	}
 	return ret, nil
@@ -84,17 +84,18 @@ func getIntParam(c *gin.Context, param string, defaultval int) (int, error) {
 func getFloatParam(c *gin.Context, param string, defaultval float64) (float64, error) {
 	p, ok := c.GetQuery(param)
 	if !ok {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " не указан"})
+		//c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " не указан"})
 		return defaultval, errors.New(param + " не указан")
 	}
 	ret, err := strconv.ParseFloat(p, 64)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " должен быть числом"})
+		//c.JSON(http.StatusOK, gin.H{"error": true, "message": param + " должен быть числом"})
 		return defaultval, errors.New(param + " должен быть числом")
 	}
 	return ret, nil
 }
 
+/*
 func parseAnswer(insdata []byte) (command uint16, errcode byte, data []byte) {
 	if insdata[0] == 0xff {
 		command = binary.BigEndian.Uint16(insdata[0:2])
@@ -115,7 +116,7 @@ func parseAnswer(insdata []byte) (command uint16, errcode byte, data []byte) {
 	}
 	return
 }
-
+*/
 func kkmRunFunction(k *drv.KkmDrv, fname string, param []byte) (errcode byte, data []byte, descr string, err error) {
 
 	switch fname {
@@ -476,13 +477,8 @@ func openCheck(c *gin.Context) {
 		return
 	}
 	pass = itob(int64(ipass))[:4]
-	errcode, err := kkm.CancelCheck(pass)
-	if errcode > 0 {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
-		return
-	}
 
-	errcode, err = kkm.FNGetStatus()
+	errcode, err := kkm.FNGetStatus()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
@@ -565,6 +561,7 @@ func fnOperation(c *gin.Context) {
 	}
 	procid, err := getIntParam(c, "procid", 0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	if kkm.ChkBusy(procid) {
@@ -584,30 +581,35 @@ func fnOperation(c *gin.Context) {
 	pass = itob(int64(ipass))[:4]
 	checkType, err := getIntParam(c, "CheckType", 0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	quantity, err := getFloatParam(c, "Quantity", 0.0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	price, err := getFloatParam(c, "Price", 0.0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	summ1, err := getFloatParam(c, "Summ1", 0.0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	taxval, err := getFloatParam(c, "TaxValue", 0.0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	tax1 := c.DefaultQuery("Tax1", "4")
 	//Department - отдел (0..16 режим свободной продажи, 255 – режим продажи по коду товара),
-	department, err := getIntParam(c, "Department", 0)
+	department, _ := getIntParam(c, "Department", 0)
 
-	paymentTypeSign, err := getIntParam(c, "PaymentTypeSign", 4) //Полный расчет
-	paymentItemSign, err := getIntParam(c, "PaymentItemSign", 1) //товар
+	paymentTypeSign, _ := getIntParam(c, "PaymentTypeSign", 4) //Полный расчет
+	paymentItemSign, _ := getIntParam(c, "PaymentItemSign", 1) //товар
 	stringForPrinting := c.DefaultQuery("StringForPrinting", "")
 	/*PaymentTypeSign - признак способа расчета,
 	1	Предоплата 100%
@@ -640,6 +642,7 @@ func printString(c *gin.Context) {
 	}
 	procid, err := getIntParam(c, "procid", 0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	if kkm.ChkBusy(procid) {
@@ -657,7 +660,8 @@ func printString(c *gin.Context) {
 		return
 	}
 	pass = itob(int64(ipass))[:4]
-	errcode, err := kkm.CancelCheck(pass)
+	str := c.Query("printstring")
+	errcode, err := kkm.PrintString(pass, str)
 	if errcode > 0 {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
 		return
@@ -678,6 +682,7 @@ func cancelCheck(c *gin.Context) {
 	}
 	procid, err := getIntParam(c, "procid", 0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	if kkm.ChkBusy(procid) {
@@ -716,6 +721,7 @@ func closeCheck(c *gin.Context) {
 	}
 	procid, err := getIntParam(c, "procid", 0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	if kkm.ChkBusy(procid) {
@@ -733,13 +739,9 @@ func closeCheck(c *gin.Context) {
 		return
 	}
 	pass = itob(int64(ipass))[:4]
-	errcode, err := kkm.CancelCheck(pass)
-	if errcode > 0 {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
-		return
-	}
 	taxsystem, err := getIntParam(c, "taxsystem", 0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	//taxsystem = Код системы налогообложения.
@@ -802,6 +804,7 @@ func fnSendTagOperation(c *gin.Context) {
 	}
 	procid, err := getIntParam(c, "procid", 0)
 	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
 		return
 	}
 	if kkm.ChkBusy(procid) {
@@ -819,11 +822,6 @@ func fnSendTagOperation(c *gin.Context) {
 		return
 	}
 	pass = itob(int64(ipass))[:4]
-	errcode, err := kkm.CancelCheck(pass)
-	if errcode > 0 {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
-		return
-	}
 	steg, ok := c.GetQuery("teg")
 	if !ok {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "Тег должен быть числовым"})
@@ -838,7 +836,7 @@ func fnSendTagOperation(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "Не указано значение тега"})
 	}
 
-	errcode, err = kkm.FNSendTLVOperation(pass, uint16(teg), encodeWindows1251(val))
+	errcode, err := kkm.FNSendTLVOperation(pass, uint16(teg), encodeWindows1251(val))
 	if errcode > 0 {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
 		return
@@ -880,11 +878,6 @@ func fnSendTag(c *gin.Context) {
 		return
 	}
 	pass = itob(int64(ipass))[:4]
-	errcode, err := kkm.CancelCheck(pass)
-	if errcode > 0 {
-		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
-		return
-	}
 	steg, ok := c.GetQuery("teg")
 	if !ok {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "Тег должен быть числовым"})
@@ -899,7 +892,7 @@ func fnSendTag(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": "Не указано значение тега"})
 	}
 
-	errcode, err = kkm.FNSendTLV(pass, uint16(teg), encodeWindows1251(val))
+	errcode, err := kkm.FNSendTLV(pass, uint16(teg), encodeWindows1251(val))
 	if errcode > 0 {
 		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
 		return
@@ -907,6 +900,53 @@ func fnSendTag(c *gin.Context) {
 	hdata["procid"] = procid
 	hdata["teg"] = teg
 	hdata["val"] = val
+	hdata["error"] = false
+	hdata["message"] = "ok"
+	c.JSON(http.StatusOK, hdata)
+}
+
+func cutCheck(c *gin.Context) {
+	hdata := make(map[string]interface{})
+	deviceID := c.Param("DeviceID")
+	kkm, err := KkmServ.GetDrv(deviceID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": "deviceID не зарегистрирован"})
+		return
+	}
+	procid, err := getIntParam(c, "procid", 0)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": err.Error()})
+		return
+	}
+	if kkm.ChkBusy(procid) {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": "ККТ занята"})
+		return
+	}
+	var pass []byte
+	spass, ok := c.GetQuery("pass")
+	if !ok {
+		pass = kkm.GetAdminPass()
+	}
+	ipass, err := strconv.Atoi(spass)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": "Пароль должен быть числовым"})
+		return
+	}
+	pass = itob(int64(ipass))[:4]
+	var tip uint8
+	stip, ok := c.GetQuery("tip")
+	if !ok {
+		tip = 0
+	}
+	if stip == "1" {
+		tip = 1
+	}
+	errcode, err := kkm.CutCheck(pass, tip)
+	if errcode > 0 {
+		c.JSON(http.StatusOK, gin.H{"error": true, "message": kkm.ParseErrState(errcode)})
+		return
+	}
+	hdata["procid"] = procid
 	hdata["error"] = false
 	hdata["message"] = "ok"
 	c.JSON(http.StatusOK, hdata)
